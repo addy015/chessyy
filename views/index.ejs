@@ -11,8 +11,9 @@
             display: grid;
             grid-template-columns: repeat(8, minmax(0, 1fr));
             grid-template-rows: repeat(8, minmax(0, 1fr));
-            width: 400px;
-            height: 400px;
+            width: 100%;
+            max-width: 600px;
+            aspect-ratio: 1 / 1;
             transform: rotate(0deg);
             user-select: none;
         }
@@ -34,6 +35,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            position: relative;
         }
 
         .square.light {
@@ -45,8 +47,16 @@
         }
 
         .piece {
-            font-size: 36px;
+            font-size: 8vw;
             cursor: pointer;
+            z-index: 2;
+            /* Ensure piece is above the dot */
+        }
+
+        @media (min-width: 600px) {
+            .piece {
+                font-size: 48px;
+            }
         }
 
         .piece.draggable {
@@ -61,6 +71,60 @@
         .flipped .piece {
             transform: rotate(180deg);
         }
+
+        .selected {
+            background-color: #bbc !important;
+        }
+
+        .available-move {
+            height: 30%;
+            width: 30%;
+            background-color: rgba(0, 255, 0, 0.5);
+            border-radius: 50%;
+            position: absolute;
+            z-index: 1;
+        }
+
+        /* If there's a piece on the available move square, we might want a different style like a ring */
+        .available-move-capture {
+            height: 80%;
+            width: 80%;
+            border: 4px solid rgba(0, 255, 0, 0.5);
+            background-color: transparent;
+            border-radius: 50%;
+            position: absolute;
+            z-index: 1;
+        }
+
+        /* Status/HUD styles */
+        .hud {
+            width: 100%;
+            max-width: 600px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.3);
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-bottom: 4px;
+            color: #ccc;
+            min-height: 48px;
+            /* Ensure height for pieces */
+        }
+
+        .hud-player {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Captured Pieces CSS Removed */
+
+        /* Adjust bottom HUD margin */
+        .hud.bottom {
+            margin-top: 4px;
+            margin-bottom: 0;
+        }
     </style>
 </head>
 
@@ -72,9 +136,29 @@
             <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-white"></div>
         </div>
 
-        <div id="game-container" class="flex flex-col items-center">
-            <div id="status" class="text-white mb-2 h-6 font-semibold"></div>
-            <div id="chessboard" class="chessboard w-96 border-2 border-gray-400 h-96"></div>
+        <div id="game-container" class="flex flex-col items-center w-full px-4">
+
+            <!-- Opponent HUD (Top) -->
+            <div id="opponent-hud" class="hud">
+                <div class="hud-player w-full flex justify-between">
+                    <span id="opponent-name">Black</span>
+                    
+                </div>
+            </div>
+
+            <div id="chessboard" class="chessboard border-2 border-gray-400"></div>
+
+            <!-- Player HUD (Bottom) -->
+            <div id="player-hud" class="hud bottom">
+                <div class="hud-player w-full flex justify-between">
+                    <span id="player-name">White</span>
+                    
+                </div>
+            </div>  
+
+            <div id="status" class="text-white mt-2 h-6 font-semibold text-center hidden"></div>
+            <!-- Hidden status, using HUDs now mostly, or keep for game over msg -->
+
             <div id="controls" class="mt-4 flex gap-4">
                 <button id="end-game-btn"
                     class="hidden bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition">

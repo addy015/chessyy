@@ -19,8 +19,28 @@ let playerRole = null;
 
 //render board
 const renderBoard = () => {
+    // Update HUD names based on role
+    const playerNameEl = document.querySelector("#player-name");
+    const opponentNameEl = document.querySelector("#opponent-name");
+
+    if (playerNameEl && opponentNameEl) {
+        if (playerRole === 'b') {
+            playerNameEl.innerText = "Black";
+            opponentNameEl.innerText = "White";
+        } else {
+            playerNameEl.innerText = "White";
+            opponentNameEl.innerText = "Black";
+        }
+    }
+
     const board = chess.board();
     boardElement.innerHTML = "";
+
+    if (playerRole === 'b') {
+        boardElement.classList.add("flipped");
+    } else {
+        boardElement.classList.remove("flipped");
+    }
 
     board.forEach((row, rowIndex) => {
         row.forEach((square, squareIndex) => {
@@ -29,79 +49,115 @@ const renderBoard = () => {
             squareElement.classList.add((rowIndex + squareIndex) % 2 === 0 ? "light" : "dark");
             squareElement.dataset.row = rowIndex;
             squareElement.dataset.col = squareIndex;
+
+            // Highlight selected square
+            if (selectedSquare && selectedSquare.row === rowIndex && selectedSquare.col === squareIndex) {
+                squareElement.classList.add("selected");
+            }
+
+            // Show legal moves
+            const move = possibleMoves.find(m => m.to === `${String.fromCharCode(97 + squareIndex)}${8 - rowIndex}`);
+            if (move) {
+                const indicator = document.createElement("div");
+                // Check if it's a capture or en passant
+                if (move.flags.includes('c') || move.flags.includes('e')) {
+                    indicator.classList.add("available-move-capture");
+                } else {
+                    indicator.classList.add("available-move");
+                }
+                squareElement.appendChild(indicator);
+            }
+
+            // Click handler for move/select
+            squareElement.addEventListener("click", (e) => {
+                // prevent propagating to parent if any
+                e.stopPropagation();
+                handleSquareClick(rowIndex, squareIndex);
+            });
+
+
             if (square) {
                 const pieceElement = document.createElement("div");
                 pieceElement.classList.add("piece",
                     square.color === "w" ? "white" : "black");
 
                 pieceElement.textContent = getPieceUnicode(square.type);
-                // Only draggable if it's your turn and your piece, AND game is active (implied by role)
-                pieceElement.draggable = playerRole === square.color;
-
-                //drag start
-                pieceElement.addEventListener("dragstart", (e) => {
-                    if (pieceElement.draggable) {
-                        draggedPiece = pieceElement;
-                        draggedSource = { row: rowIndex, col: squareIndex };
-                        e.dataTransfer.setData("text/plain", "");
-                    }
-                });
-
-                // drag end
-                pieceElement.addEventListener("dragend", (e) => {
-                    draggedPiece = null;
-                    draggedSource = null;
-                });
+                // No draggable attribute or events
                 squareElement.appendChild(pieceElement);
             }
 
-            //drag over
-            squareElement.addEventListener("dragover", (e) => {
-                e.preventDefault();
-            });
-            //drop
-            squareElement.addEventListener("drop", (e) => {
-                e.preventDefault();
-                if (!draggedPiece) return;
-                const targetSquare = { row: rowIndex, col: squareIndex };
-                handleMove(draggedSource, targetSquare);
-            });
             boardElement.appendChild(squareElement);
         });
     });
 
     updateStatus();
+    // updateCapturedPieces(); // Evaluation logic removed
 }
 
-const handleMove = (source, target) => {
-    const cols = ["a", "b", "c", "d", "e", "f", "g", "h"];
-    const rows = ["8", "7", "6", "5", "4", "3", "2", "1"];
+let selectedSquare = null;
+let possibleMoves = [];
 
-    const from = `${cols[source.col]}${rows[source.row]}`;
-    const to = `${cols[target.col]}${rows[target.row]}`;
+const handleSquareClick = (row, col) => {
+    // Only allow interaction if it's our role
+    if (!playerRole) return;
 
-    const move = {
-        from: from,
-        to: to,
-        promotion: 'q', // defaults to queen
-    };
+    // Convert click to algebraic
+    const targetSquareNotation = `${String.fromCharCode(97 + col)}${8 - row}`;
 
-    socket.emit("move", move);
+    // IF we have a selected piece, check if this click is a valid move
+    if (selectedSquare) {
+        // Find if this target is in possible moves
+        const move = possibleMoves.find(m => m.to === targetSquareNotation);
+        if (move) {
+            // It is a valid move! Execute it.
+            socket.emit("move", move);
+            selectedSquare = null;
+            possibleMoves = [];
+            // Optimistic UI update or wait for server? Wait for server is safer for consistency.
+            // renderBoard(); // Optional, server update comes fast usually
+            return;
+        }
+    }
+
+    // If not a move, check if we are selecting a piece
+    const board = chess.board();
+    const piece = board[row][col];
+
+    if (piece && piece.color === playerRole) {
+        // It's our piece, select it
+        if (selectedSquare && selectedSquare.row === row && selectedSquare.col === col) {
+            // Deselect if clicking same piece (toggle)
+            selectedSquare = null;
+            possibleMoves = [];
+        } else {
+            selectedSquare = { row, col };
+            // Calculate legal moves for this piece
+            const fromSquare = `${String.fromCharCode(97 + col)}${8 - row}`;
+            possibleMoves = chess.moves({ square: fromSquare, verbose: true });
+        }
+        renderBoard();
+    } else {
+        // Clicked empty square or opponent piece (and not a valid move)
+        selectedSquare = null;
+        possibleMoves = [];
+        renderBoard();
+    }
 }
+
+// handleMove function removed as it was only used for drag-drop
 
 const getPieceUnicode = (piece) => {
     const unicodePieces = {
-        p: '♙',
-        r: '♖',
-        n: '♘',
-        b: '♗',
-        q: '♕',
-        k: '♔',
+        p: '♙', r: '♖', n: '♘', b: '♗', q: '♕', k: '♔',
+        P: '♙', R: '♖', N: '♘', B: '♗', Q: '♕', K: '♔',
     };
-    return unicodePieces[piece] || "";
+    return unicodePieces[piece.type || piece] || "";
 }
 
+// updateCapturedPieces function removed as evaluation logic is no longer needed.
+
 const showNotification = (message, duration = 3000) => {
+    if (!notification || !notificationText) return;
     notificationText.textContent = message;
     notification.classList.remove("hidden");
     setTimeout(() => {
@@ -110,6 +166,7 @@ const showNotification = (message, duration = 3000) => {
 };
 
 const updateStatus = () => {
+    if (!statusElement) return;
     if (!playerRole) {
         statusElement.textContent = "Spectating / Waiting";
         return;
