@@ -17,9 +17,7 @@ let draggedPiece = null;
 let draggedSource = null;
 let playerRole = null;
 
-//render board
 const renderBoard = () => {
-    // Update HUD names based on role
     const playerNameEl = document.querySelector("#player-name");
     const opponentNameEl = document.querySelector("#opponent-name");
 
@@ -46,20 +44,19 @@ const renderBoard = () => {
         row.forEach((square, squareIndex) => {
             const squareElement = document.createElement("div");
             squareElement.classList.add("square");
+
             squareElement.classList.add((rowIndex + squareIndex) % 2 === 0 ? "light" : "dark");
+
             squareElement.dataset.row = rowIndex;
             squareElement.dataset.col = squareIndex;
 
-            // Highlight selected square
             if (selectedSquare && selectedSquare.row === rowIndex && selectedSquare.col === squareIndex) {
                 squareElement.classList.add("selected");
             }
 
-            // Show legal moves
             const move = possibleMoves.find(m => m.to === `${String.fromCharCode(97 + squareIndex)}${8 - rowIndex}`);
             if (move) {
                 const indicator = document.createElement("div");
-                // Check if it's a capture or en passant
                 if (move.flags.includes('c') || move.flags.includes('e')) {
                     indicator.classList.add("available-move-capture");
                 } else {
@@ -68,9 +65,7 @@ const renderBoard = () => {
                 squareElement.appendChild(indicator);
             }
 
-            // Click handler for move/select
             squareElement.addEventListener("click", (e) => {
-                // prevent propagating to parent if any
                 e.stopPropagation();
                 handleSquareClick(rowIndex, squareIndex);
             });
@@ -82,7 +77,6 @@ const renderBoard = () => {
                     square.color === "w" ? "white" : "black");
 
                 pieceElement.textContent = getPieceUnicode(square.type);
-                // No draggable attribute or events
                 squareElement.appendChild(pieceElement);
             }
 
@@ -91,60 +85,45 @@ const renderBoard = () => {
     });
 
     updateStatus();
-    // updateCapturedPieces(); // Evaluation logic removed
 }
 
 let selectedSquare = null;
 let possibleMoves = [];
 
 const handleSquareClick = (row, col) => {
-    // Only allow interaction if it's our role
     if (!playerRole) return;
 
-    // Convert click to algebraic
     const targetSquareNotation = `${String.fromCharCode(97 + col)}${8 - row}`;
 
-    // IF we have a selected piece, check if this click is a valid move
     if (selectedSquare) {
-        // Find if this target is in possible moves
         const move = possibleMoves.find(m => m.to === targetSquareNotation);
         if (move) {
-            // It is a valid move! Execute it.
             socket.emit("move", move);
             selectedSquare = null;
             possibleMoves = [];
-            // Optimistic UI update or wait for server? Wait for server is safer for consistency.
-            // renderBoard(); // Optional, server update comes fast usually
             return;
         }
     }
 
-    // If not a move, check if we are selecting a piece
     const board = chess.board();
     const piece = board[row][col];
 
     if (piece && piece.color === playerRole) {
-        // It's our piece, select it
         if (selectedSquare && selectedSquare.row === row && selectedSquare.col === col) {
-            // Deselect if clicking same piece (toggle)
             selectedSquare = null;
             possibleMoves = [];
         } else {
             selectedSquare = { row, col };
-            // Calculate legal moves for this piece
             const fromSquare = `${String.fromCharCode(97 + col)}${8 - row}`;
             possibleMoves = chess.moves({ square: fromSquare, verbose: true });
         }
         renderBoard();
     } else {
-        // Clicked empty square or opponent piece (and not a valid move)
         selectedSquare = null;
         possibleMoves = [];
         renderBoard();
     }
 }
-
-// handleMove function removed as it was only used for drag-drop
 
 const getPieceUnicode = (piece) => {
     const unicodePieces = {
@@ -153,8 +132,6 @@ const getPieceUnicode = (piece) => {
     };
     return unicodePieces[piece.type || piece] || "";
 }
-
-// updateCapturedPieces function removed as evaluation logic is no longer needed.
 
 const showNotification = (message, duration = 3000) => {
     if (!notification || !notificationText) return;
@@ -183,7 +160,7 @@ const updateStatus = () => {
     }
 }
 
-// Socket Events
+// --- Socket Events ---
 
 socket.on("waitingForOpponent", () => {
     waitingMessage.classList.remove("hidden");
@@ -219,11 +196,11 @@ socket.on("move", function (move) {
 });
 
 socket.on("invalidMove", function (move) {
-    // Optionally alert user or just snap back (renderBoard handles snap back by re-rendering state)
     renderBoard();
 });
 
-// End Game Logic
+// --- End Game Logic ---
+
 endGameBtn.addEventListener("click", () => {
     if (confirm("Are you sure you want to propose ending the game?")) {
         socket.emit("requestEndGame");
@@ -251,7 +228,6 @@ socket.on("endGameDeclined", () => {
 
 socket.on("gameEnded", (message) => {
     alert(message);
-    // Board state is usually reset by server sending new FEN, but we can clear local highlighting if any
 });
 
 socket.on("opponentDisconnected", () => {
