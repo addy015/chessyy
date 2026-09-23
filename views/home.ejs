@@ -1,0 +1,81 @@
+<!-- What this file does:
+     Homepage Template (rendered when visiting '/').
+-->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <%- include('partials/head', { title: title, extraCss: ['home.css'] }) %>
+</head>
+
+<body>
+    <%- include('partials/masthead', { edition: edition }) %>
+
+    <main class="home-container">
+        <!-- 12-Column Background Grid Lines (visual design motif) -->
+        <div class="editorial-grid-overlay">
+            <% for(let i=0; i < 12; i++) { %>
+                <div class="editorial-grid-line"></div>
+            <% } %>
+        </div>
+
+        <section class="home-hero">
+            <!-- Left Hero Content: Headline, Subtitle, and Call To Action -->
+            <div class="hero-content">
+                <h1 class="hero-title">
+                    THE ARCHITECTURE<br>
+                    OF <span class="title-accent">THOUGHT.</span>
+                </h1>
+
+                <p class="hero-subtext">
+                    64 squares. 32 pieces. Two minds locked in silence. A real-time, zero-distraction multiplayer
+                    arena built with pure strategic geometry.
+                </p>
+
+                <!-- Start Playing Button -->
+                <div class="cta-wrapper">
+                    <a href="/play" class="btn-play-now" id="home-play-cta">
+                        <span>PLAY NOW</span>
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5" stroke-linecap="square" stroke-linejoin="miter">
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                            <polyline points="12 5 19 12 12 19"></polyline>
+                        </svg>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Right Visual: Abstract 8x8 Matrix Composition -->
+            <div class="home-visual">
+                <div class="abstract-board-matrix" id="hero-matrix" title="64 SQUARES / ABSTRACT GEOMETRY">
+                    <!-- Generates 64 grid cells; sampleAccents highlights center squares (e4, d4, e5, d5) -->
+                    <% const sampleAccents=[27, 28, 35, 36, 18, 45]; 
+                       for(let r=0; r < 8; r++) { 
+                           for(let c=0; c < 8; c++) { 
+                               const idx = r * 8 + c; 
+                               const isShaded = (r + c) % 2 === 1; 
+                               const isAccent = sampleAccents.includes(idx); %>
+                        <div class="matrix-cell <%= isShaded ? 'shaded' : '' %> <%= isAccent ? 'active-accent' : '' %>"
+                            data-coord="<%= String.fromCharCode(97 + c) %><%= 8 - r %>">
+                            <% if(isAccent) { %>
+                                &bull;
+                            <% } %>
+                        </div>
+                    <% } } %>
+                </div>
+                <!-- Dynamic coordinate text updated by home.js on mouse hover -->
+                <div class="matrix-caption">
+                    <span>CENTER OCCUPATION</span>
+                    <span>COORDINATES [E4, D4, E5, D5]</span>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <%- include('partials/footer') %>
+
+    <!-- Homepage interactive script (matrix hover + Enter/Space key launcher) -->
+    <script src="/js/home.js"></script>
+</body>
+
+</html>

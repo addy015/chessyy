@@ -1,99 +1,120 @@
-# ♟️ Chessyy - Real-Time Multiplayer Chess
+# Chessyy ♟️
 
-A sleek, real-time multiplayer chess application built with **Node.js**, **Socket.io**, and **Chess.js**. Play classic chess against friends or random opponents instantly!
-
----
-
-## 🚀 Live Demo
-
-### **[Play Now on Render](https://chessyy.onrender.com)**
-
-> **⚠️ Important:** This is a real-time multiplayer game.  
-> If you are the first person to join, you will see a **"Waiting for opponent"** screen.  
-> To test it yourself immediately: **Open the link in two different browser tabs**
+A real-time multiplayer chess platform with a clean, Swiss-editorial newspaper aesthetic, built-in live chat, Stockfish position evaluations, and post-match coaching powered by Google Gemini.
 
 ---
 
-## ✨ Features
+## What is this?
 
-- **Real-Time Gameplay:** Instant move updates and board synchronization using WebSockets.
-- **Click-to-Move Interface:** Simple and intuitive piece movement (desktop & mobile friendly).
-- **Move Validation:** Legal moves are highlighted; illegal moves are prevented automatically.
-- **Game States:** Automatic detection of **Check**, **Checkmate**, **Draw**, and **Stalemate**.
-- **Player Roles:** Automatic assignment of White (first player) and Black (second player) pieces.
-- **Spectator Mode:** Additional users can watch the game in progress.
-- **Responsive Design:** Fully responsive UI built with Tailwind CSS.
+Chessyy is a full-stack chess web app built for people who appreciate thoughtful typography and minimalism just as much as good chess games.
+
+Instead of heavy client-side frameworks, it uses clean server-rendered EJS templates, vanilla JavaScript modules, and WebSockets for instantaneous move synchronization. When the match ends, an isolated Python microservice analyzes the game using the Stockfish chess engine and asks Gemini to write tailored feedback highlighting where things went right or wrong.
 
 ---
 
-## 🛠️ Tech Stack
+## Highlights
 
-- **Frontend:** HTML5, EJS (Templating), Vanilla JavaScript, Tailwind CSS
-- **Backend:** Node.js, Express.js
-- **Real-Time Communication:** Socket.io
-- **Game Logic:** Chess.js (Move validation and state management)
-
----
-
-## 🎮 How to Play
-
-1. **Start a Game:**
-   - Open the [Live Link](https://chessyy.onrender.com).
-   - If no one else is online, you will wait in the lobby.
-   - Share the link with a friend or open a second tab to simulate an opponent.
-
-2. **Gameplay:**
-   - **White moves first.**
-   - Click on a piece to select it, then click on a valid square to move.
-   - Valid moves are highlighted with a small dot 🟢.
-   - Capture moves are highlighted with a ring ⭕.
-
-3. **Winning:**
-   - Checkmate your opponent's King to win!
-   - The game will announce the winner or the reason for a draw/stalemate.
+- **Real-Time Multiplayer**: Instant matchmaking over WebSockets (Socket.io). Room assignments, turns, legal move validation via `chess.js`, and check/checkmate detection handled on the server.
+- **In-Game Live Chat**: Ephemeral, RAM-only chat with quick reaction buttons (`GL`, `SHARP`, `GG`, `TENSION`). Messages vanish when the game room closes—no unnecessary database footprint.
+- **Post-Game Analysis**:
+  - **Stockfish Engine Evaluation**: Calculates overall accuracy scores for both players and tags every single ply (`Brilliant`, `Best`, `Excellent`, `Inaccuracy`, `Mistake`, `Blunder`).
+  - **Dynamic Eval Bar**: Real-time visual balance indicator showing positional advantage.
+  - **AI Coach (Google Gemini)**: Analyzes the game's turning point and offers concrete tips for White and Black.
+  - **Move Replay Stepper**: Step back and forth through the game move-by-move with on-screen controls or keyboard arrow shortcuts.
+- **Editorial Design System**: Typography-driven design using Space Grotesk, Inter, and JetBrains Mono, warm newsprint palette, and crisp 1px borders.
 
 ---
 
-## 💻 Local Installation
+## Architecture Overview
 
-To run this project locally on your machine:
+Chessyy runs as two cooperative services (packaged together in a single container for lightweight hosting):
 
-1.  **Clone the Repository**
-    ```bash
-    git clone https://github.com/addy015/chessyy.git
-    cd chessyy
-    ```
-
-2.  **Install Dependencies**
-    ```bash
-    npm install
-    ```
-
-3.  **Run the Server**
-    ```bash
-    npx nodemon app.js
-    # OR
-    npm start
-    ```
-
-4.  **Play Locally**
-    - Open your browser and go to `http://localhost:3000`.
-    - Open a second tab to `http://localhost:3000` to play as the second player.
+```text
+[ Browser / Client ]
+      │
+      ├── Socket.io (WebSocket) ──► Node.js / Express Server (Port 3000)
+      │                             ├── Matchmaking & Active Game Rooms
+      │                             ├── Move Validation (chess.js)
+      │                             └── Ephemeral Chat Memory
+      │
+      └── HTTP /api/game/analyze ──► Python AI Microservice (FastAPI, Port 8000)
+                                    ├── Stockfish UCI Engine (Move by Move)
+                                    └── Google Gemini (Coach Narrative & Tips)
+```
 
 ---
 
-## 🤝 Contributing
+## Tech Stack
 
-Contributions are welcome! Feel free to open an issue or submit a pull request.
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+- **Frontend**: Vanilla JavaScript (ES Modules), HTML5 / EJS, CSS3 (Custom design system).
+- **Backend**: Node.js, Express, Socket.io, `chess.js`.
+- **AI Microservice**: Python 3.11+, FastAPI, Uvicorn, `python-chess`, `google-genai`.
+- **Engine**: Stockfish 17 (UCI binary).
+- **Deployment**: Single unified Docker container running both Node and Python under a lightweight startup script.
 
 ---
 
-## 📝 License
+## Local Development Setup
 
-This project is open source and available under the [MIT License](LICENSE).
+### 1. Prerequisites
+- **Node.js** (v18 or higher)
+- **Python** (v3.11 or higher)
+- **Stockfish**: A Stockfish binary placed in `ai_service/bin/stockfish/` or installed on your system PATH.
+- **Gemini API Key**: From [Google AI Studio](https://aistudio.google.com/).
+
+### 2. Clone & Install Node Dependencies
+```bash
+git clone https://github.com/your-username/chessyy.git
+cd chessyy
+npm install
+```
+
+### 3. Setup Python AI Service
+```bash
+cd ai_service
+python -m venv .venv
+
+# On Windows:
+.venv\Scripts\activate
+# On Linux / macOS:
+source .venv/bin/activate
+
+pip install -r requirements.txt
+cd ..
+```
+
+### 4. Configure Environment
+Create a `.env` file in the root directory:
+```env
+PORT=3000
+AI_SERVICE_URL=http://127.0.0.1:8000
+GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+### 5. Run Locally
+You can run both the Node server and Python AI service concurrently with:
+```bash
+npm run dev:all
+```
+
+Then open `http://localhost:3000` in two browser windows to test multiplayer matchmaking.
+
+---
+
+## Production / Docker Deployment
+
+Chessyy includes a multi-stage `Dockerfile` configured to compile Stockfish from source and run both the Node app and FastAPI service in a single container:
+
+```bash
+# Build Docker image
+docker build -t chessyy .
+
+# Run container locally
+docker run -p 3000:3000 -e GEMINI_API_KEY=your_gemini_api_key_here chessyy
+```
+
+---
+
+## License
+
+ISC License. Feel free to tweak, build upon, or learn from the code!

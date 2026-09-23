@@ -1,0 +1,145 @@
+<!-- What this file does:
+     Post-Match Review & AI Engine Analysis Template (rendered when visiting '/review').
+     
+     Layout Structure:
+     - Header Card: Displays White & Black accuracy scores (%) and Stockfish depth info.
+     - Center Stage:
+       - Vertical Evaluation Bar (shows which side is winning in centipawns/pawns).
+       - Read-only chessboard.
+       - Move stepper controls (|<<, <, >, >>|, FLIP) and arrow navigation hints.
+     - Right Column:
+       - Move Journal: List of moves with evaluation badges (Best, Mistake, Blunder, Brilliant).
+       - Engine Suggestion Box: Shows Stockfish's top recommendation for the selected move.
+       - Gemini AI Coach Card: Displays natural language tips for both players.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <%- include('partials/head', { title: title, extraCss: ['board.css', 'review.css'] }) %>
+</head>
+<body>
+    <%- include('partials/masthead', { edition: edition }) %>
+
+    <div class="review-layout">
+        <!-- ---------------------------------------------------------
+             01 / MATCH ACCURACY & EVALUATION SUMMARY HEADER
+        ---------------------------------------------------------- -->
+        <header class="review-header-card">
+            <div>
+                <div class="review-headline">03 // POST-MATCH EVALUATION &amp; ENGINE AUDIT</div>
+                <div class="review-sub" id="match-meta-line">STOCKFISH UCI DEPTH 12 &bull; WIN PROBABILITY CURVES</div>
+            </div>
+
+            <!-- Player Accuracy Percentage Cards -->
+            <div class="accuracy-tally-group">
+                <div class="accuracy-pill">
+                    <span class="accuracy-color-dot white"></span>
+                    <div>
+                        <div class="accuracy-label">WHITE ACCURACY</div>
+                        <div class="accuracy-val" id="white-accuracy-val">—%</div>
+                    </div>
+                </div>
+
+                <div class="accuracy-pill">
+                    <span class="accuracy-color-dot black"></span>
+                    <div>
+                        <div class="accuracy-label">BLACK ACCURACY</div>
+                        <div class="accuracy-val" id="black-accuracy-val">—%</div>
+                    </div>
+                </div>
+
+                <a href="/play" class="btn-step" style="text-decoration:none; display:flex; align-items:center;">
+                    PLAY AGAIN &rarr;
+                </a>
+            </div>
+        </header>
+
+        <!-- ---------------------------------------------------------
+             02 / MAIN REVIEW STAGE: EVAL BAR + BOARD + STEPPER
+        ---------------------------------------------------------- -->
+        <main class="board-and-eval-container">
+            <!-- Vertical Evaluation Bar (shows advantage from -10 to +10 pawns) -->
+            <div class="eval-bar-wrapper" id="eval-bar-wrapper">
+                <div class="eval-bar-fill-white" id="eval-bar-fill"></div>
+                <span class="eval-score-text" id="eval-score-text">+0.0</span>
+            </div>
+
+            <!-- Review Chessboard Arena -->
+            <div class="review-board-area">
+                <div class="board-wrapper">
+                    <div id="chessboard" class="chessboard"></div>
+                </div>
+
+                <!-- Step-by-Step Move Controller -->
+                <div class="review-stepper-bar">
+                    <div class="stepper-buttons">
+                        <button id="btn-first" class="btn-step" title="Start of game (|<<)">|&lt;&lt;</button>
+                        <button id="btn-prev" class="btn-step" title="Previous move (<)">&lt;</button>
+                        <button id="btn-next" class="btn-step" title="Next move (>)">&gt;</button>
+                        <button id="btn-last" class="btn-step" title="End of game (>>|)">&gt;&gt;|</button>
+                        <button id="btn-flip" class="btn-step" title="Flip board perspective">FLIP</button>
+                    </div>
+
+                    <div class="stepper-hotkeys-hint">
+                        KEYBOARD: [ &larr; / &rarr; ] NAVIGATE
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- ---------------------------------------------------------
+             03 / MOVE JOURNAL & BADGE TIMELINE
+        ---------------------------------------------------------- -->
+        <aside class="review-journal-panel">
+            <div class="panel-header">
+                <span class="panel-title">EVALUATION JOURNAL</span>
+                <span class="panel-meta" id="ply-counter">PLY 0 / 0</span>
+            </div>
+
+            <!-- List of moves with badges (Brilliant, Best, Blunder) -->
+            <div class="review-journal-scroll" id="review-moves-container">
+                <div style="padding: 24px 0; text-align: center; color: var(--ink-muted);">
+                    Computing engine evaluation...
+                </div>
+            </div>
+
+            <!-- Stockfish Engine Recommendation Box -->
+            <div class="engine-suggestion-box" id="engine-suggestion-box">
+                <div class="engine-suggestion-title" id="engine-suggestion-title">ENGINE EVALUATION</div>
+                <div class="engine-suggestion-body" id="engine-suggestion-body">
+                    Select any move to inspect Stockfish's top recommendation and positional delta.
+                </div>
+            </div>
+
+            <!-- Google Gemini AI Coach Advice Card -->
+            <div class="coach-dispatch-card" id="coach-dispatch-card">
+                <div class="coach-dispatch-header">
+                    <span class="coach-badge">AI COACH // GEMINI</span>
+                    <span class="coach-meta">TACTICAL DEBRIEF</span>
+                </div>
+                <div class="coach-tips-grid">
+                    <div class="coach-tip-block">
+                        <span class="tip-player white">WHITE</span>
+                        <p id="coach-white-tip" class="coach-tip-text">Evaluating strategic strengths...</p>
+                    </div>
+                    <div class="coach-tip-block">
+                        <span class="tip-player black">BLACK</span>
+                        <p id="coach-black-tip" class="coach-tip-text">Evaluating strategic strengths...</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Floating Toast Notification -->
+    <div id="notification" class="editorial-toast hidden">
+        <span id="notification-text"></span>
+    </div>
+
+    <%- include('partials/footer') %>
+
+    <!-- Engine Script Dependencies -->
+    <script src="/js/chess.min.js"></script>
+    <script type="module" src="/js/review.js"></script>
+</body>
+</html>

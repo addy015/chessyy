@@ -1,0 +1,186 @@
+<!-- What this file does:
+     Live Match Template (rendered when visiting '/play').
+     
+     Layout Structure:
+     - Column 1 (Left): Live move list (PGN ledger), captured pieces, and material score difference.
+     - Column 2 (Center): Opponent HUD banner, 8x8 Chessboard, Player HUD banner, and turn status ticker.
+     - Column 3 (Right): Match controls (Offer Draw, Resign), and live in-game ephemeral chat.
+     - Modals: Matchmaking queue popup, draw offer popup, game over dialog, and toast alerts.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <%- include('partials/head', { title: title, extraCss: ['board.css'] }) %>
+</head>
+<body>
+    <%- include('partials/masthead', { edition: edition }) %>
+
+    <div class="arena-layout">
+        <!-- ---------------------------------------------------------
+             COLUMN 1: Live Move Ledger & Material Advantage Tally
+        ---------------------------------------------------------- -->
+        <aside class="ledger-panel">
+            <div class="panel-header">
+                <span class="panel-title">01 / MOVE JOURNAL</span>
+                <span class="panel-meta" id="match-round-tag">LIVE PGN</span>
+            </div>
+
+            <!-- Scrollable list of moves played during the match -->
+            <div class="ledger-scroll" id="ledger-container">
+                <div class="empty-ledger-notice" id="empty-ledger-notice">
+                    [Awaiting opening move...]
+                </div>
+            </div>
+
+            <!-- Captured pieces icons and point difference score -->
+            <div class="material-tally">
+                <div class="tally-row">
+                    <span class="tally-label">WHITE CAPTURES:</span>
+                    <span class="tally-pieces" id="white-captured-pieces">—</span>
+                </div>
+                <div class="tally-row">
+                    <span class="tally-label">BLACK CAPTURES:</span>
+                    <span class="tally-pieces" id="black-captured-pieces">—</span>
+                </div>
+                <div class="tally-row tally-balance-row">
+                    <span class="tally-label">MATERIAL BALANCE:</span>
+                    <span class="tally-balance" id="material-balance">EVEN (0)</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ---------------------------------------------------------
+             COLUMN 2: The Main Chessboard
+        ---------------------------------------------------------- -->
+        <main class="board-arena">
+            <!-- Opponent Banner (Top HUD) -->
+            <div id="opponent-hud" class="player-banner top">
+                <div class="player-identity">
+                    <span class="player-role-indicator black" id="opponent-color-indicator"></span>
+                    <span id="opponent-name" class="player-name-text">OPPONENT</span>
+                </div>
+            </div>
+
+            <!-- The 64-square chessboard (drawn dynamically by boardRenderer.js) -->
+            <div class="board-wrapper">
+                <div id="chessboard" class="chessboard"></div>
+            </div>
+
+            <!-- Player Banner (Bottom HUD) -->
+            <div id="player-hud" class="player-banner bottom">
+                <div class="player-identity">
+                    <span class="player-role-indicator white" id="player-color-indicator"></span>
+                    <span id="player-name" class="player-name-text">YOU</span>
+                </div>
+            </div>
+
+            <!-- Turn & Check Status Ticker -->
+            <div id="status" class="match-status-ticker">
+                <span id="turn-badge">INITIALIZING PROTOCOL...</span>
+            </div>
+        </main>
+
+        <!-- ---------------------------------------------------------
+             COLUMN 3: Controls & Ephemeral Live Chat
+        ---------------------------------------------------------- -->
+        <aside class="controls-panel">
+            <div class="panel-header">
+                <span class="panel-title">02 / PROTOCOL &amp; DISPATCH</span>
+                <span class="panel-meta">RAM ONLY</span>
+            </div>
+
+            <!-- Primary Action Buttons: Draw offer & Resign -->
+            <div id="controls" class="actions-group">
+                <button id="end-game-btn" class="btn-editorial hidden">
+                    OFFER DRAW / RESET &rarr;
+                </button>
+                <button id="resign-btn" class="btn-editorial btn-editorial-danger hidden">
+                    RESIGN MATCH &rarr;
+                </button>
+            </div>
+
+            <!-- In-game chat system (messages vanish when match ends) -->
+            <div class="dispatch-wrapper">
+                <!-- Quick reaction canned buttons -->
+                <div class="quick-reactions">
+                    <button class="btn-canned" data-msg="Good luck &amp; play well.">GL</button>
+                    <button class="btn-canned" data-msg="Sharp tactical move!">SHARP</button>
+                    <button class="btn-canned" data-msg="Well played!">GG</button>
+                    <button class="btn-canned" data-msg="Tough position.">TENSION</button>
+                </div>
+
+                <!-- Chat Messages Feed -->
+                <div class="dispatch-messages" id="dispatch-messages">
+                    <div class="dispatch-placeholder">
+                        [Ephemeral dispatch active. Messages vanish on game termination.]
+                    </div>
+                </div>
+
+                <!-- Chat Input Form -->
+                <form id="dispatch-form" class="dispatch-input-row" onsubmit="return false;">
+                    <input type="text" id="dispatch-input" class="dispatch-input" placeholder="Message opponent (max 200)..." maxlength="200" autocomplete="off">
+                    <button type="submit" id="send-dispatch-btn" class="btn-editorial btn-send">SEND</button>
+                </form>
+            </div>
+        </aside>
+    </div>
+
+    <!-- ---------------------------------------------------------
+         MODALS & DIALOGS
+    ---------------------------------------------------------- -->
+
+    <!-- 1. Waiting for Matchmaking Modal -->
+    <div id="waiting-message" class="editorial-modal-backdrop">
+        <div class="editorial-modal-box modal-center">
+            <div class="modal-protocol-tag">PROTOCOL 01 // MATCHMAKING</div>
+            <h2 class="modal-headline">WAITING FOR ANOTHER PLAYER TO JOIN...</h2>
+            <p class="modal-body-text">You are connected to the server. Game will initiate automatically as soon as an opponent connects.</p>
+            <div class="modal-searching-tag">[SEARCHING // WAITING FOR OPPONENT...]</div>
+        </div>
+    </div>
+
+    <!-- 2. Draw / Reset Offer Confirmation Modal -->
+    <div id="end-game-modal" class="editorial-modal-backdrop hidden">
+        <div class="editorial-modal-box">
+            <div class="modal-protocol-tag">NEGOTIATION PROTOCOL</div>
+            <h3 class="modal-headline modal-headline-sm">DRAW / RESET OFFERED</h3>
+            <p class="modal-body-text">Your opponent has proposed concluding this match by mutual agreement. Do you accept?</p>
+            <div class="modal-actions">
+                <button id="decline-end-game" class="btn-editorial">DECLINE ✕</button>
+                <button id="accept-end-game" class="btn-editorial btn-editorial-solid">ACCEPT &rarr;</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Game Over Outcome Modal -->
+    <div id="game-over-modal" class="editorial-modal-backdrop hidden">
+        <div class="editorial-modal-box modal-center">
+            <div class="modal-protocol-tag">FINAL EVALUATION</div>
+            <h2 class="modal-headline modal-headline-lg">GAME CONCLUDED</h2>
+            <p id="game-over-reason" class="modal-result-text"></p>
+            <div class="modal-actions modal-actions-center" style="gap: 12px; display: flex;">
+                <button id="review-game-btn" class="btn-play-now" style="background: var(--ink); color: var(--paper); border: 2px solid var(--ink);">
+                    REVIEW MATCH &rarr;
+                </button>
+                <button onclick="location.reload()" class="btn-play-now btn-play-again">
+                    PLAY AGAIN &rarr;
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. Floating Toast Notification -->
+    <div id="notification" class="editorial-toast hidden">
+        <span id="notification-text"></span>
+    </div>
+
+    <%- include('partials/footer') %>
+
+    <!-- Socket.io WebSocket library & chess.js rule validator -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/chess.min.js"></script>
+
+    <!-- Main Gameplay Controller -->
+    <script type="module" src="/js/game.js"></script>
+</body>
+</html>

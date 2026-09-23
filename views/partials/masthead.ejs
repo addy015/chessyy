@@ -1,0 +1,49 @@
+<!-- What this file does:
+     Reusable Top Navigation Bar (Masthead)
+     Includes:
+     1. Brand logo and current edition tag.
+     2. Live status indicator (green pulse dot).
+     3. Navigation links (01 / INDEX, 02 / PLAY ARENA).
+     4. Tiny JavaScript snippet that highlights the currently active page link.
+-->
+<header class="editorial-masthead">
+    <div class="editorial-masthead-inner">
+        <!-- Logo and brand link -->
+        <a href="/" class="brand-mark">
+            <span>CHESSYY</span>
+            <span class="brand-tag">
+                <%= typeof edition !=='undefined' ? edition : 'EDITION 2026' %>
+            </span>
+        </a>
+
+        <!-- Live indicator pulse -->
+        <div class="live-ticker"> 
+            <span>HUMAN / MULTIPLAYER</span>
+        </div>
+
+        <!-- Navigation Links -->
+        <nav>
+            <ul class="nav-links">
+                <li>
+                    <a href="/" class="nav-link" id="nav-index">01 / INDEX</a>
+                </li>
+                <li>
+                    <a href="/play" class="nav-link" id="nav-play">02 / PLAY ARENA →</a>
+                </li>
+            </ul>
+        </nav>
+    </div>
+</header>
+
+<!-- Small script: checks current browser URL path and adds 'active' CSS class to that nav link -->
+<script>
+    (function () {
+        var p = window.location.pathname; // Gets current path, e.g. "/" or "/play"
+        var map = { "/": "nav-index", "/play": "nav-play" };
+        var id = map[p];
+        if (id) {
+            var el = document.getElementById(id);
+            if (el) el.classList.add("active");
+        }
+    })();
+</script>

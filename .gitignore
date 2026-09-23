@@ -1,3 +1,53 @@
-node_modules
+# Dependencies
+node_modules/
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+ai_service/.venv/
+ai_service/__pycache__/
+
+# Environment variables & secrets
 .env
+.env.*
+!.env.example
+
+# IDE & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
 .DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Stockfish local binaries & builds
+stockfish/
+ai_service/bin/
+*.exe
+*.bin
+*.dll
+
+# Logs & Runtime data
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Testing & Cache
+.pytest_cache/
+.coverage
+htmlcov/
+test_*.py
+ai_service/test_*.py
+
+# Tool artifacts
+graphify-out/
+
+# Markdown documentation (keep only README.md)
+*.md
+!README.md

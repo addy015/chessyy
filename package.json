@@ -4,6 +4,9 @@
   "description": "",
   "main": "app.js",
   "scripts": {
+    "dev": "node --watch app.js",
+    "ai": ".\\ai_service\\.venv\\Scripts\\python.exe -m uvicorn main:app --app-dir ai_service --host 127.0.0.1 --port 8000 --reload",
+    "dev:all": "concurrently -n \"NODE,PYTHON\" -c \"cyan,magenta\" \"npm run dev\" \"npm run ai\"",
     "start": "node app.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -17,5 +20,8 @@
     "ejs": "^4.0.1",
     "express": "^5.2.1",
     "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
   }
 }

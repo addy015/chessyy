@@ -1,10 +1,14 @@
 services:
+  # ─────────────────────────────────────────────────────────────
+  # Unified Container: Node.js (Web + Sockets) & Python (Stockfish + Gemini)
+  # Runs on 1 single Free instance to stay within Render's 750 free hours.
+  # ─────────────────────────────────────────────────────────────
   - type: web
-    name: chessyy-app
-    env: node
+    name: chessyy
+    env: docker
     plan: free
-    buildCommand: npm install
-    startCommand: node app.js
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
     envVars:
-      - key: NODE_VERSION
-        value: 20.11.0
+      - key: GEMINI_API_KEY
+        sync: false

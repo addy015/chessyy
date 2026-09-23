@@ -1,0 +1,25 @@
+node_modules
+.venv
+ai_service/.venv
+ai_service/__pycache__
+__pycache__
+.git
+.gitignore
+.env
+.env.*
+*.log
+graphify-out
+.vscode
+.idea
+*.exe
+*.bin
+*.dll
+stockfish
+ai_service/bin
+.pytest_cache
+test_*.py
+ai_service/test_*.py
+
+# Markdown documentation (keep only README.md)
+*.md
+!README.md

@@ -1,0 +1,23 @@
+<!-- What this file does:
+     Reusable HTML <head> partial.
+     Includes page title, meta tags, Google Fonts, and core CSS.
+     Allows individual pages to pass extra stylesheets via the 'extraCss' array.
+-->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title><%= title %></title>
+
+<!-- Typography: Google Fonts (Inter, JetBrains Mono, Playfair Display, Space Grotesk) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:ital@1&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+
+<!-- Main Stylesheet -->
+<link rel="stylesheet" href="/css/editorial.css">
+
+<!-- Optional page-specific stylesheets passed from routes (e.g. board.css, review.css) -->
+<% if (typeof extraCss !== 'undefined') { %>
+    <% extraCss.forEach(function(cssFile) { %>
+        <link rel="stylesheet" href="/css/<%= cssFile %>">
+    <% }); %>
+<% } %>
