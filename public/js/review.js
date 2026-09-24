@@ -139,6 +139,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             onSquareClick: null // Clicking squares does not move pieces during review
         });
 
+        syncEvalBarHeight();
+
         // Update Stepper Button states (disable Prev at start, disable Next at end)
         btnFirst.disabled = currentPly === 0;
         btnPrev.disabled = currentPly === 0;
@@ -181,6 +183,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             evalScoreText.textContent = (evalScore > 0 ? `+${evalScore.toFixed(1)}` : evalScore.toFixed(1));
         }
     }
+
+    // Keep eval bar height matching the chessboard on all screen sizes
+    function syncEvalBarHeight() {
+        const boardWrapper = document.querySelector('.review-board-area .board-wrapper');
+        if (boardWrapper && evalBarWrapper) {
+            const h = boardWrapper.offsetHeight;
+            if (h > 0) {
+                evalBarWrapper.style.height = `${h}px`;
+            }
+        }
+    }
+    window.addEventListener('resize', syncEvalBarHeight);
 
     // Highlights the current move row and scrolls it into view automatically
     function highlightJournalMove(ply) {

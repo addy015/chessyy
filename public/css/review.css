@@ -381,3 +381,96 @@
   line-height: 1.35;
   font-style: italic;
 }
+
+@media (max-width: 1024px) {
+  .review-layout {
+    grid-template-columns: 1fr;
+    max-width: 620px;
+    padding: 16px 12px;
+    gap: 20px;
+    min-height: auto;
+  }
+  .board-and-eval-container {
+    order: 1;
+    width: 100%;
+  }
+  .review-board-area {
+    width: 100%;
+    max-width: 540px;
+  }
+  .review-journal-panel {
+    order: 2;
+    width: 100%;
+    height: auto;
+    max-height: 480px;
+  }
+}
+
+@media (max-width: 768px) {
+  .review-header-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px 16px;
+  }
+  .accuracy-tally-group {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .accuracy-pill {
+    flex: 1;
+    min-width: 110px;
+    padding: 6px 12px;
+  }
+  .accuracy-tally-group .btn-step {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+  .board-and-eval-container {
+    gap: 10px;
+    width: 100%;
+  }
+  .eval-bar-wrapper {
+    width: 20px;
+    min-height: 280px;
+  }
+}
+
+@media (max-width: 520px) {
+  .review-layout {
+    padding: 10px 8px;
+    gap: 14px;
+  }
+  .review-stepper-bar {
+    padding: 8px 10px;
+    justify-content: center;
+  }
+  .stepper-hotkeys-hint {
+    display: none;
+  }
+  .stepper-buttons {
+    width: 100%;
+    justify-content: space-between;
+    gap: 4px;
+  }
+  .btn-step {
+    padding: 6px 10px;
+    font-size: 0.75rem;
+  }
+  .review-move-row {
+    grid-template-columns: 32px 1fr 1fr;
+    gap: 6px;
+    padding: 6px 4px;
+  }
+  .move-badge {
+    font-size: 0.58rem;
+    padding: 1px 4px;
+  }
+  .engine-suggestion-box,
+  .coach-dispatch-card {
+    padding: 10px 12px;
+  }
+}
