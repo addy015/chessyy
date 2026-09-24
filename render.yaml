@@ -1,8 +1,6 @@
 services:
-  # ─────────────────────────────────────────────────────────────
   # Unified Container: Node.js (Web + Sockets) & Python (Stockfish + Gemini)
   # Runs on 1 single Free instance to stay within Render's 750 free hours.
-  # ─────────────────────────────────────────────────────────────
   - type: web
     name: chessyy
     env: docker
