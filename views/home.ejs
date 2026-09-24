@@ -9,7 +9,7 @@
 </head>
 
 <body>
-    <%- include('partials/masthead', { edition: edition }) %>
+    <%- include('partials/masthead') %>
 
     <main class="home-container">
         <!-- 12-Column Background Grid Lines (visual design motif) -->
@@ -28,20 +28,24 @@
                 </h1>
 
                 <p class="hero-subtext">
-                    64 squares. 32 pieces. Two minds locked in silence. A real-time, zero-distraction multiplayer
-                    arena built with pure strategic geometry.
+                    64 squares. 32 pieces. Two minds locked in silence. A real-time multiplayer arena. <br>Just 2 players trying to outthink each other before the flag falls.
                 </p>
 
-                <!-- Start Playing Button -->
+                <!-- Start Playing Buttons -->
                 <div class="cta-wrapper">
                     <a href="/play" class="btn-play-now" id="home-play-cta">
-                        <span>PLAY NOW</span>
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.5" stroke-linecap="square" stroke-linejoin="miter">
-                            <line x1="5" y1="12" x2="19" y2="12"></line>
-                            <polyline points="12 5 19 12 12 19"></polyline>
-                        </svg>
+                        <span>PLAY NOW</span>                        
                     </a>
+                    <button type="button" class="btn-play-friends" id="home-friends-cta">
+                        <span>PLAY WITH A FRIEND</span>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="square" stroke-linejoin="miter">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                        </svg>
+                    </button>
                 </div>
             </div>
 
@@ -71,6 +75,54 @@
             </div>
         </section>
     </main>
+
+    <!-- Play With Friends Modal -->
+    <div id="friend-modal" class="editorial-modal-backdrop hidden">
+        <div class="editorial-modal-box">
+            <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+                <div class="modal-protocol-tag" style="margin-bottom: 0;">PROTOCOL 02 // PRIVATE MATCH</div>
+                <button type="button" id="close-friend-modal" class="btn-modal-close" aria-label="Close modal">&times;</button>
+            </div>
+            
+            <h2 class="modal-headline modal-headline-sm" style="margin-bottom: 20px;">PLAY WITH A FRIEND</h2>
+
+            <!-- Mode Tabs: Create vs Join -->
+            <div class="friend-modal-tabs">
+                <button type="button" class="friend-tab-btn active" id="tab-create-btn">CREATE ROOM</button>
+                <button type="button" class="friend-tab-btn" id="tab-join-btn">JOIN WITH CODE</button>
+            </div>
+
+            <!-- Tab 1: Create Room Content -->
+            <div id="tab-create-content" class="friend-tab-panel">
+                <p class="modal-body-text" style="margin-bottom: 20px;">
+                    Generate a unique 6-character room code. You will play as <strong>White</strong>; your friend will join with the code as <strong>Black</strong>.
+                </p>
+                <div class="friend-action-box">
+                    <button type="button" id="generate-room-btn" class="btn-play-now" style="width: 100%; justify-content: center;">
+                        <span>GENERATE CODE &amp; ENTER &rarr;</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab 2: Join Room Content -->
+            <div id="tab-join-content" class="friend-tab-panel hidden">
+                <p class="modal-body-text" style="margin-bottom: 16px;">
+                    Enter the team code provided by your friend to join their match as <strong>Black</strong>.
+                </p>
+                <form id="join-room-form" onsubmit="return false;">
+                    <div class="friend-input-wrapper">
+                        <input type="text" id="join-room-code-input" class="friend-code-input" placeholder="ENTER ROOM CODE" maxlength="16" autocomplete="off" spellcheck="false">
+                    </div>
+                    <div id="join-error-msg" class="friend-error-text hidden"></div>
+                    <div class="friend-action-box" style="margin-top: 16px;">
+                        <button type="submit" id="submit-join-btn" class="btn-play-now" style="width: 100%; justify-content: center;">
+                            <span>JOIN MATCH &rarr;</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 
     <%- include('partials/footer') %>
 

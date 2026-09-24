@@ -10,10 +10,10 @@
 // 5. Handles live in-game chat and resign/draw buttons.
 // -------------------------------------------------------------------------
 
-import { getSocket, emitMove, emitChatMessage, emitRequestEndGame, emitRespondEndGame, emitResign } from './modules/socketClient.js';
+import { getSocket, emitMove, emitChatMessage, emitRequestEndGame, emitRespondEndGame, emitResign, emitJoinRandomQueue, emitHostPrivateRoom, emitJoinPrivateRoom } from './modules/socketClient.js';
 import { renderBoard } from './modules/boardRenderer.js';
 import { updateMoveLedger, updateMaterialBalance } from './modules/moveLedger.js';
-import { showWaitingModal, showEndGameModal, showGameOverModal, showToast } from './modules/editorialModals.js';
+import { showWaitingModal, showEndGameModal, showGameOverModal, showToast, showPrivateWaitingModal, clearPrivateRoomTimer, showRoomErrorModal } from './modules/editorialModals.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // Connect to WebSocket server and initialize chess rule engine
@@ -186,6 +186,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // 2. Both players matched -> start playing
     socket.on('startGame', () => {
         isMatchConcluded = false;
+        clearPrivateRoomTimer();
+        showPrivateWaitingModal(false);
         showWaitingModal(false);
         const gameOverModal = document.querySelector('#game-over-modal');
         if (gameOverModal) gameOverModal.classList.add('hidden');
@@ -197,6 +199,32 @@ document.addEventListener('DOMContentLoaded', () => {
         if (endGameBtn) endGameBtn.classList.remove('hidden');
         if (resignBtn) resignBtn.classList.remove('hidden');
         showToast('Opponent connected. Match initiated.');
+    });
+
+    // 2b. Private Room Host Created
+    socket.on('privateRoomCreated', (data) => {
+        showWaitingModal(false);
+        showPrivateWaitingModal(true, {
+            roomCode: data.roomCode,
+            expiresAt: data.expiresAt
+        });
+        if (turnBadge) turnBadge.textContent = `AWAITING FRIEND // CODE [${data.roomCode}]`;
+    });
+
+    // 2c. Private Room Expired (10 min sweep)
+    socket.on('privateRoomExpired', (data) => {
+        clearPrivateRoomTimer();
+        showToast(data.message || 'Room code expired.');
+        if (turnBadge) turnBadge.textContent = 'ROOM CODE EXPIRED';
+    });
+
+    // 2d. Private Room Join / Connection Error
+    socket.on('privateRoomError', (data) => {
+        clearPrivateRoomTimer();
+        showPrivateWaitingModal(false);
+        showWaitingModal(false);
+        showRoomErrorModal(data.message);
+        if (turnBadge) turnBadge.textContent = 'CONNECTION FAILED';
     });
 
     // 3. Server tells us whether we are playing White ('w') or Black ('b')
@@ -402,14 +430,62 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Setup 1-click Copy buttons for Private Room Waiting Modal
+    const copyRoomCodeBtn = document.querySelector('#copy-room-code-btn');
+    if (copyRoomCodeBtn) {
+        copyRoomCodeBtn.addEventListener('click', () => {
+            const codeEl = document.querySelector('#private-room-code');
+            const code = codeEl ? codeEl.textContent.trim() : '';
+            if (code && code !== '------') {
+                navigator.clipboard.writeText(code).then(() => {
+                    showToast('Room code copied: ' + code);
+                }).catch(() => {
+                    showToast('Code: ' + code);
+                });
+            }
+        });
+    }
+
+    const copyRoomLinkBtn = document.querySelector('#copy-room-link-btn');
+    if (copyRoomLinkBtn) {
+        copyRoomLinkBtn.addEventListener('click', () => {
+            const codeEl = document.querySelector('#private-room-code');
+            const code = codeEl ? codeEl.textContent.trim() : '';
+            if (code && code !== '------') {
+                const inviteUrl = `${window.location.origin}/play?room=${encodeURIComponent(code)}`;
+                navigator.clipboard.writeText(inviteUrl).then(() => {
+                    showToast('Invite link copied to clipboard!');
+                }).catch(() => {
+                    showToast('Link copied');
+                });
+            }
+        });
+    }
+
     // -------------------------------------------------------------
-    // Initial Setup: Waiting state before players connect
+    // Initial Setup & Route / Matchmaking Dispatch
     // -------------------------------------------------------------
-    showWaitingModal(true);
     if (boardElement) boardElement.classList.add('opacity-40', 'pointer-events-none');
     if (endGameBtn) endGameBtn.classList.add('hidden');
     if (resignBtn) resignBtn.classList.add('hidden');
-    if (turnBadge) turnBadge.textContent = 'QUEUED // AWAITING OPPONENT';
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomParam = urlParams.get('room') ? urlParams.get('room').trim().toUpperCase() : null;
+    const roleParam = urlParams.get('role') ? urlParams.get('role').trim().toLowerCase() : null;
+
+    if (roomParam) {
+        if (roleParam === 'host') {
+            if (turnBadge) turnBadge.textContent = `HOSTING PRIVATE ROOM // [${roomParam}]`;
+            emitHostPrivateRoom(roomParam);
+        } else {
+            if (turnBadge) turnBadge.textContent = `CONNECTING TO ROOM // [${roomParam}]`;
+            emitJoinPrivateRoom(roomParam);
+        }
+    } else {
+        if (turnBadge) turnBadge.textContent = 'QUEUED // AWAITING OPPONENT';
+        showWaitingModal(true);
+        emitJoinRandomQueue();
+    }
 
     // Initial render of empty/starting board
     refreshUI();

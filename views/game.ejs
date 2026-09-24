@@ -13,7 +13,7 @@
     <%- include('partials/head', { title: title, extraCss: ['board.css'] }) %>
 </head>
 <body>
-    <%- include('partials/masthead', { edition: edition }) %>
+    <%- include('partials/masthead') %>
 
     <div class="arena-layout">
         <!-- ---------------------------------------------------------
@@ -86,7 +86,6 @@
         <aside class="controls-panel">
             <div class="panel-header">
                 <span class="panel-title">02 / PROTOCOL &amp; DISPATCH</span>
-                <span class="panel-meta">RAM ONLY</span>
             </div>
 
             <!-- Primary Action Buttons: Draw offer & Resign -->
@@ -104,15 +103,14 @@
                 <!-- Quick reaction canned buttons -->
                 <div class="quick-reactions">
                     <button class="btn-canned" data-msg="Good luck &amp; play well.">GL</button>
-                    <button class="btn-canned" data-msg="Sharp tactical move!">SHARP</button>
                     <button class="btn-canned" data-msg="Well played!">GG</button>
-                    <button class="btn-canned" data-msg="Tough position.">TENSION</button>
+                    <button class="btn-canned" data-msg="Tough position.">TUFF</button>
                 </div>
 
                 <!-- Chat Messages Feed -->
                 <div class="dispatch-messages" id="dispatch-messages">
                     <div class="dispatch-placeholder">
-                        [Ephemeral dispatch active. Messages vanish on game termination.]
+                        [Remember, he/she is your opponent, not your enemy.]
                     </div>
                 </div>
 
@@ -129,13 +127,66 @@
          MODALS & DIALOGS
     ---------------------------------------------------------- -->
 
-    <!-- 1. Waiting for Matchmaking Modal -->
-    <div id="waiting-message" class="editorial-modal-backdrop">
+    <!-- 1. Waiting for Matchmaking Modal (Random Queue) -->
+    <div id="waiting-message" class="editorial-modal-backdrop hidden">
         <div class="editorial-modal-box modal-center">
-            <div class="modal-protocol-tag">PROTOCOL 01 // MATCHMAKING</div>
+            <div class="modal-protocol-tag">PROTOCOL 01 / MATCHMAKING</div>
             <h2 class="modal-headline">WAITING FOR ANOTHER PLAYER TO JOIN...</h2>
             <p class="modal-body-text">You are connected to the server. Game will initiate automatically as soon as an opponent connects.</p>
-            <div class="modal-searching-tag">[SEARCHING // WAITING FOR OPPONENT...]</div>
+            <div class="modal-searching-tag">[SEARCHING / WAITING FOR OPPONENT...]</div>
+        </div>
+    </div>
+
+    <!-- 1b. Private Room Waiting Modal (With 10-Minute Countdown) -->
+    <div id="private-waiting-modal" class="editorial-modal-backdrop hidden">
+        <div class="editorial-modal-box modal-center">
+            <div class="modal-protocol-tag">PROTOCOL 02 / PRIVATE MATCH</div>
+            <h2 class="modal-headline modal-headline-sm">AWAITING FRIEND TO JOIN</h2>
+            <p class="modal-body-text">Share this room code or invite link with your friend. You play as <strong>White</strong>; your friend will join as <strong>Black</strong>.</p>
+            
+            <div class="private-room-code-badge">
+                <span class="code-label">ROOM CODE:</span>
+                <span id="private-room-code" class="code-value">------</span>
+            </div>
+
+            <div class="private-room-timer-badge">
+                <span>CODE EXPIRES IN:</span>
+                <span id="private-room-timer" class="timer-countdown">10:00</span>
+            </div>
+
+            <div id="private-waiting-status" class="modal-searching-tag">[ROOM CREATED / WAITING FOR FRIEND TO JOIN...]</div>
+
+            <div id="private-waiting-actions" class="modal-actions modal-actions-center" style="margin-top: 20px; gap: 10px; display: flex; flex-wrap: wrap; justify-content: center;">
+                <button type="button" id="copy-room-code-btn" class="btn-editorial">
+                    COPY CODE 📋
+                </button>
+                <button type="button" id="copy-room-link-btn" class="btn-editorial btn-editorial-solid">
+                    COPY INVITE LINK 🔗
+                </button>
+                <a href="/" class="btn-editorial btn-editorial-danger" style="text-decoration: none;">
+                    ABORT &rarr;
+                </a>
+            </div>
+
+            <div id="private-expired-actions" class="modal-actions modal-actions-center hidden" style="margin-top: 20px; gap: 12px; display: flex; justify-content: center;">
+                <a href="/" class="btn-editorial btn-editorial-solid" style="text-decoration: none;">
+                    CREATE NEW ROOM &rarr;
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- 1c. Private Room Error Modal -->
+    <div id="room-error-modal" class="editorial-modal-backdrop hidden">
+        <div class="editorial-modal-box modal-center">
+            <div class="modal-protocol-tag">CONNECTION PROTOCOL / ERROR</div>
+            <h2 class="modal-headline modal-headline-sm" style="color: var(--vermilion, #ff3b30);">UNABLE TO JOIN ROOM</h2>
+            <p id="room-error-message" class="modal-body-text">The requested room does not exist, has expired, or is already full.</p>
+            <div class="modal-actions modal-actions-center" style="margin-top: 20px;">
+                <a href="/" class="btn-editorial btn-editorial-solid" style="text-decoration: none;">
+                    RETURN TO HOME &rarr;
+                </a>
+            </div>
         </div>
     </div>
 

@@ -19,51 +19,157 @@ function initGameSocket(io) {
     // Holds the socket of a player currently waiting in matchmaking queue
     let waitingPlayer = null;
 
+    // Stores pending private rooms: key = roomCode, value = { hostSocket, hostId, createdAt, expiresAt }
+    const privateRooms = new Map();
+    const ROOM_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+    // Periodic sweep for expired private rooms (runs every 15 seconds)
+    setInterval(() => {
+        const now = Date.now();
+        for (const [code, room] of privateRooms.entries()) {
+            if (now > room.expiresAt) {
+                if (room.hostSocket && room.hostSocket.connected) {
+                    room.hostSocket.emit('privateRoomExpired', { message: 'Room code expired (10 minutes elapsed).' });
+                }
+                privateRooms.delete(code);
+                console.log(`[Socket] Private room ${code} expired and cleaned up.`);
+            }
+        }
+    }, 15000);
+
+    // Helper: Starts a match session between White and Black sockets
+    function startGameSession(whiteSocket, blackSocket, gameId) {
+        const chess = new Chess();
+
+        games[gameId] = {
+            chess,
+            white: whiteSocket.id,
+            black: blackSocket.id,
+            sockets: {
+                [whiteSocket.id]: whiteSocket,
+                [blackSocket.id]: blackSocket
+            },
+            chat: [] // Live chat stored in RAM only
+        };
+
+        // Join both players to the same Socket.io room
+        whiteSocket.join(gameId);
+        blackSocket.join(gameId);
+
+        // Announce match start to both players
+        io.to(gameId).emit('startGame', { gameId });
+
+        // Assign colors: Creator/first gets White ('w'), Joiner/second gets Black ('b')
+        whiteSocket.emit('playerRole', 'w');
+        blackSocket.emit('playerRole', 'b');
+
+        // Send starting board position (FEN string)
+        io.to(gameId).emit('boardState', chess.fen());
+    }
+
     io.on('connection', (socket) => {
         console.log('[Socket] Client connected:', socket.id);
 
         // ---------------------------------------------------------
-        // 1. Matchmaking Queue
+        // 1. Random Matchmaking Queue
         // ---------------------------------------------------------
-        if (!waitingPlayer || waitingPlayer.id === socket.id) {
-            // First player to join waits in line
-            waitingPlayer = socket;
-            socket.emit('waitingForOpponent');
-        } else {
-            // Second player arrives -> match both players together!
-            const whiteSocket = waitingPlayer;
+        socket.on('joinRandomQueue', () => {
+            if (!waitingPlayer || waitingPlayer.id === socket.id) {
+                waitingPlayer = socket;
+                socket.emit('waitingForOpponent');
+            } else {
+                const whiteSocket = waitingPlayer;
+                const blackSocket = socket;
+                waitingPlayer = null;
+
+                const gameId = `game_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+                startGameSession(whiteSocket, blackSocket, gameId);
+            }
+        });
+
+        // ---------------------------------------------------------
+        // 1b. Private Room: Host Creation
+        // ---------------------------------------------------------
+        socket.on('hostPrivateRoom', (data) => {
+            const rawCode = data && data.roomCode ? String(data.roomCode).trim().toUpperCase() : null;
+            if (!rawCode || !/^[A-Z0-9_-]{3,16}$/.test(rawCode)) {
+                return socket.emit('privateRoomError', { message: 'Invalid room code format.' });
+            }
+
+            // Remove socket from random waiting queue if present
+            if (waitingPlayer && waitingPlayer.id === socket.id) {
+                waitingPlayer = null;
+            }
+
+            // Check if code is already active in privateRooms or active games
+            if (privateRooms.has(rawCode) || games[rawCode]) {
+                return socket.emit('privateRoomError', { message: 'Room code already in use. Please generate a new code.' });
+            }
+
+            const now = Date.now();
+            const expiresAt = now + ROOM_TTL_MS;
+
+            privateRooms.set(rawCode, {
+                hostSocket: socket,
+                hostId: socket.id,
+                createdAt: now,
+                expiresAt: expiresAt
+            });
+
+            socket.join(rawCode);
+            socket.emit('privateRoomCreated', { roomCode: rawCode, expiresAt });
+            console.log(`[Socket] Private room created: ${rawCode} by ${socket.id} (Expires in 10m)`);
+        });
+
+        // ---------------------------------------------------------
+        // 1c. Private Room: Guest Join
+        // ---------------------------------------------------------
+        socket.on('joinPrivateRoom', (data) => {
+            const rawCode = data && data.roomCode ? String(data.roomCode).trim().toUpperCase() : null;
+            if (!rawCode) {
+                return socket.emit('privateRoomError', { message: 'Room code is required.' });
+            }
+
+            // Remove socket from random waiting queue if present
+            if (waitingPlayer && waitingPlayer.id === socket.id) {
+                waitingPlayer = null;
+            }
+
+            if (!privateRooms.has(rawCode)) {
+                const isOngoing = Object.keys(games).some(gId => gId.includes(rawCode));
+                if (isOngoing) {
+                    return socket.emit('privateRoomError', { message: 'This room is already in progress and full.' });
+                }
+                return socket.emit('privateRoomError', { message: 'Room not found or code has expired.' });
+            }
+
+            const room = privateRooms.get(rawCode);
+
+            // Check if expired
+            if (Date.now() > room.expiresAt) {
+                privateRooms.delete(rawCode);
+                return socket.emit('privateRoomError', { message: 'Room code has expired (10 minute limit reached).' });
+            }
+
+            // Self-join protection
+            if (room.hostId === socket.id) {
+                return socket.emit('privateRoomError', { message: 'Cannot join your own room as second player.' });
+            }
+
+            // Check if host socket is still connected
+            if (!room.hostSocket || !room.hostSocket.connected) {
+                privateRooms.delete(rawCode);
+                return socket.emit('privateRoomError', { message: 'Host has disconnected. Room canceled.' });
+            }
+
+            const whiteSocket = room.hostSocket;
             const blackSocket = socket;
-            waitingPlayer = null; // Clear queue for next pair
+            privateRooms.delete(rawCode); // Room is now active match
 
-            // Generate unique room ID and fresh chess board
-            const gameId = `game_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-            const chess = new Chess();
-
-            games[gameId] = {
-                chess,
-                white: whiteSocket.id,
-                black: blackSocket.id,
-                sockets: {
-                    [whiteSocket.id]: whiteSocket,
-                    [blackSocket.id]: blackSocket
-                },
-                chat: [] // Live chat stored in RAM only
-            };
-
-            // Join both players to the same Socket.io room
-            whiteSocket.join(gameId);
-            blackSocket.join(gameId);
-
-            // Announce match start to both players
-            io.to(gameId).emit('startGame', { gameId });
-
-            // Assign colors: first player gets White, second gets Black
-            whiteSocket.emit('playerRole', 'w');
-            blackSocket.emit('playerRole', 'b');
-
-            // Send starting board position (FEN string)
-            io.to(gameId).emit('boardState', chess.fen());
-        }
+            const gameId = `friend_${rawCode}_${Date.now()}`;
+            console.log(`[Socket] Private room matched: ${rawCode} (White: ${whiteSocket.id}, Black: ${blackSocket.id})`);
+            startGameSession(whiteSocket, blackSocket, gameId);
+        });
 
         // ---------------------------------------------------------
         // 2. Move Execution & Turn Validation
@@ -212,35 +318,43 @@ function initGameSocket(io) {
             // If disconnected player was merely waiting in matchmaking queue
             if (waitingPlayer && waitingPlayer.id === socket.id) {
                 waitingPlayer = null;
-            } else {
-                // Player was inside an active game room
-                const gameId = Object.keys(games).find(id =>
-                    games[id].white === socket.id || games[id].black === socket.id
-                );
+            }
 
-                if (gameId) {
-                    const game = games[gameId];
-                    const isFinished = game.isFinished;
-                    const remainingSocketId = game.white === socket.id ? game.black : game.white;
-                    const remainingSocket = game.sockets ? game.sockets[remainingSocketId] : null;
+            // If disconnected player was hosting a pending private room
+            for (const [code, room] of privateRooms.entries()) {
+                if (room.hostId === socket.id) {
+                    privateRooms.delete(code);
+                    console.log(`[Socket] Private room ${code} removed due to host disconnect.`);
+                }
+            }
 
-                    // Delete match from server memory (RAM)
-                    delete games[gameId];
+            // Player was inside an active game room
+            const gameId = Object.keys(games).find(id =>
+                games[id].white === socket.id || games[id].black === socket.id
+            );
 
-                    if (remainingSocket && remainingSocket.connected) {
-                        if (isFinished) {
-                            // Match had already ended normally -> let player stay on review screen
-                            remainingSocket.emit('opponentLeftRoom');
-                        } else {
-                            // Player disconnected mid-game -> award victory to remaining player
-                            const disconnectedColor = (game.white === socket.id) ? 'White' : 'Black';
-                            const winnerColor = (disconnectedColor === 'White') ? 'Black' : 'White';
+            if (gameId) {
+                const game = games[gameId];
+                const isFinished = game.isFinished;
+                const remainingSocketId = game.white === socket.id ? game.black : game.white;
+                const remainingSocket = game.sockets ? game.sockets[remainingSocketId] : null;
 
-                            remainingSocket.emit('gameOver', {
-                                reason: `${disconnectedColor} disconnected. ${winnerColor} wins by abandonment!`,
-                                pgn: game.chess.pgn()
-                            });
-                        }
+                // Delete match from server memory (RAM)
+                delete games[gameId];
+
+                if (remainingSocket && remainingSocket.connected) {
+                    if (isFinished) {
+                        // Match had already ended normally -> let player stay on review screen
+                        remainingSocket.emit('opponentLeftRoom');
+                    } else {
+                        // Player disconnected mid-game -> award victory to remaining player
+                        const disconnectedColor = (game.white === socket.id) ? 'White' : 'Black';
+                        const winnerColor = (disconnectedColor === 'White') ? 'Black' : 'White';
+
+                        remainingSocket.emit('gameOver', {
+                            reason: `${disconnectedColor} disconnected. ${winnerColor} wins by abandonment!`,
+                            pgn: game.chess.pgn()
+                        });
                     }
                 }
             }

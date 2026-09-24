@@ -515,6 +515,57 @@
   animation: pulse 1.5s ease-in-out infinite;
 }
 
+.modal-searching-tag.expired {
+  animation: none;
+}
+
+.private-room-code-badge {
+  background-color: #f7f4ed;
+  border: 2px dashed var(--ink);
+  padding: 14px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.code-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  color: var(--ink-muted);
+}
+
+.code-value {
+  font-family: var(--font-mono);
+  font-size: 2.2rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--ink);
+}
+
+.private-room-timer-badge {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.timer-countdown {
+  color: var(--vermilion);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  background-color: rgba(229, 57, 53, 0.08);
+  padding: 2px 8px;
+  border: 1px solid rgba(229, 57, 53, 0.3);
+}
+
 @keyframes pulse {
   0%,
   100% {

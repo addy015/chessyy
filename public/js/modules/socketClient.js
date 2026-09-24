@@ -57,3 +57,27 @@ export function emitResign() {
     const socket = getSocket();
     socket.emit('resign');
 }
+
+/**
+ * Requests entering the standard random matchmaking queue.
+ */
+export function emitJoinRandomQueue() {
+    const socket = getSocket();
+    socket.emit('joinRandomQueue');
+}
+
+/**
+ * Requests creating and hosting a private room.
+ */
+export function emitHostPrivateRoom(roomCode) {
+    const socket = getSocket();
+    socket.emit('hostPrivateRoom', { roomCode });
+}
+
+/**
+ * Requests joining an existing private room.
+ */
+export function emitJoinPrivateRoom(roomCode) {
+    const socket = getSocket();
+    socket.emit('joinPrivateRoom', { roomCode });
+}

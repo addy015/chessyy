@@ -26,8 +26,7 @@ router.get('/health', (req, res) => {
  */
 router.get('/', (req, res) => {
     res.render('home', {
-        title: 'CHESSYY',
-        edition: '2026 EDITION'
+        title: 'CHESSYY'
     });
 });
 
@@ -36,8 +35,7 @@ router.get('/', (req, res) => {
  */
 router.get('/play', (req, res) => {
     res.render('game', {
-        title: 'CHESSYY — Live Arena',
-        edition: '2026 EDITION'
+        title: 'CHESSYY - Live Arena'
     });
 });
 
@@ -46,8 +44,7 @@ router.get('/play', (req, res) => {
  */
 router.get('/review', (req, res) => {
     res.render('review', {
-        title: 'CHESSYY — Match Review',
-        edition: '2026 EDITION'
+        title: 'CHESSYY - Match Review'
     });
 });
 
