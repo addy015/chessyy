@@ -113,6 +113,7 @@
   box-shadow: 6px 6px 0px var(--vermilion);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   cursor: pointer;
+  box-sizing: border-box;
 }
 
 .btn-play-now:hover {
@@ -148,6 +149,7 @@
   box-shadow: 6px 6px 0px rgba(0, 0, 0, 0.15);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   cursor: pointer;
+  box-sizing: border-box;
 }
 
 .btn-play-friends:hover {
@@ -211,6 +213,7 @@
 
 .friend-code-input {
   width: 100%;
+  box-sizing: border-box;
   font-family: var(--font-mono);
   font-size: 1.35rem;
   font-weight: 700;
@@ -353,6 +356,30 @@
   }
 }
 
+@media (max-width: 768px) {
+  .cta-wrapper {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+  .btn-play-now,
+  .btn-play-friends {
+    width: 100%;
+    justify-content: center;
+    box-sizing: border-box;
+    padding: 16px 24px;
+    font-size: 1.05rem;
+  }
+  .btn-play-friends {
+    box-shadow: 5px 5px 0px var(--ink);
+  }
+  .btn-play-friends:hover {
+    box-shadow: 7px 7px 0px var(--vermilion);
+  }
+}
+
 @media (max-width: 640px) {
   .home-container {
     padding: 24px 16px 20px 16px;
@@ -376,15 +403,41 @@
     margin-bottom: 24px;
     padding-left: 12px;
   }
-  .btn-play-now {
+  .cta-wrapper {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .btn-play-now,
+  .btn-play-friends {
     font-size: 0.95rem;
-    padding: 14px 24px;
+    padding: 14px 20px;
     width: 100%;
     justify-content: center;
+    box-sizing: border-box;
+  }
+  .btn-play-now {
     box-shadow: 4px 4px 0px var(--vermilion);
   }
   .btn-play-now:hover {
     box-shadow: 6px 6px 0px var(--ink);
+  }
+  .btn-play-friends {
+    box-shadow: 4px 4px 0px var(--ink);
+  }
+  .btn-play-friends:hover {
+    box-shadow: 6px 6px 0px var(--vermilion);
+  }
+  .friend-code-input {
+    font-size: 1.15rem;
+    letter-spacing: 0.12em;
+    padding: 12px;
+  }
+  .friend-tab-btn {
+    font-size: 0.75rem;
+    padding: 10px 8px;
   }
   .abstract-board-matrix {
     max-width: min(280px, 80vw);
