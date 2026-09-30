@@ -13,10 +13,22 @@ export default function MoveJournal({
   maxRetries = 3,
 }) {
   const activeRowRef = useRef(null);
+  const scrollContainerRef = useRef(null);
 
   useEffect(() => {
-    if (activeRowRef.current) {
-      activeRowRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    const container = scrollContainerRef.current;
+    const row = activeRowRef.current;
+    if (container && row) {
+      const rowTop = row.offsetTop;
+      const rowHeight = row.offsetHeight;
+      const containerScrollTop = container.scrollTop;
+      const containerHeight = container.clientHeight;
+
+      if (rowTop < containerScrollTop) {
+        container.scrollTo({ top: rowTop, behavior: 'smooth' });
+      } else if (rowTop + rowHeight > containerScrollTop + containerHeight) {
+        container.scrollTo({ top: rowTop + rowHeight - containerHeight, behavior: 'smooth' });
+      }
     }
   }, [currentPly]);
 
@@ -84,7 +96,7 @@ export default function MoveJournal({
         </div>
       )}
 
-      <div className="review-journal-scroll" id="review-moves-container">
+      <div className="review-journal-scroll" id="review-moves-container" ref={scrollContainerRef}>
         {pairedMoves.length === 0 ? (
           <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--ink-muted)' }}>
             No moves recorded in this match.

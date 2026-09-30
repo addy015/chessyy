@@ -6,7 +6,6 @@ export default function AccuracyHeader({
   blackHandle = 'BLACK',
   whiteAccuracy = '—',
   blackAccuracy = '—',
-  onExportCard,
   onDownloadPgn,
 }) {
   return (
@@ -39,26 +38,6 @@ export default function AccuracyHeader({
 
         {/* Sound toggle button */}
         <SoundToggleButton />
-
-        {/* Export Match Card Button */}
-        <button
-          type="button"
-          id="export-card-btn"
-          className="btn-step"
-          onClick={onExportCard}
-          style={{
-            background: 'var(--paper)',
-            border: '1px solid var(--ink)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontWeight: 700,
-          }}
-          title="Generate shareable match summary card"
-        >
-          <span>CARD</span> &rarr;
-        </button>
 
         {/* Download PGN Button */}
         <button

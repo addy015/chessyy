@@ -21,10 +21,27 @@ router.get('/health', (req, res) => {
 // Cache recently analyzed games in memory (stores up to 100 games).
 const analysisCache = new Map();
 
-// Coalesce concurrent requests for the same match PGN
+// Coalesce concurrent requests for the same match moves
 // If both players click "Review Match" at the exact same second, only 1 Stockfish/Gemini
 // job runs in Python while the second request awaits the same promise!
 const inFlightAnalyses = new Map();
+
+/**
+ * Normalizes PGN text to pure moves so slight variations in FIDE headers,
+ * whitespace, or line breaks between White and Black tabs never produce
+ * divergent cache keys for the exact same match!
+ */
+function getPgnCacheKey(pgn, includeCoach) {
+    if (!pgn || typeof pgn !== 'string') return '';
+    const normalizedMoves = pgn
+        .replace(/\[.*?\]\s*/g, '')
+        .replace(/\{.*?\}/g, '')
+        .replace(/\s+/g, ' ')
+        .replace(/\s*\*\s*$/, '')
+        .replace(/\s*(1-0|0-1|1\/2-1\/2)\s*$/, '')
+        .trim();
+    return `${normalizedMoves}__coach_${includeCoach !== false}`;
+}
 
 /**
  * Analysis Proxy API.
@@ -42,8 +59,24 @@ router.post('/api/game/analyze', async (req, res) => {
         });
     }
 
+    const cacheKey = getPgnCacheKey(pgn, includeCoach);
+
+    // Fast-path: If match has 0 moves (aborted / instant resignation)
+    if (!cacheKey.replace(/__coach_(true|false)/, '').trim()) {
+        return res.json({
+            gameId: gameId || `match_${Date.now()}`,
+            whiteAccuracy: 100.0,
+            blackAccuracy: 100.0,
+            evalGraph: [0.0],
+            moves: [],
+            coachSummary: {
+                whiteTip: 'No moves were played in this match.',
+                blackTip: 'No moves were played in this match.'
+            }
+        });
+    }
+
     // 1. Check in-memory cache first
-    const cacheKey = `${pgn.trim()}__coach_${includeCoach !== false}`;
     if (analysisCache.has(cacheKey)) {
         return res.json(analysisCache.get(cacheKey));
     }
@@ -58,30 +91,49 @@ router.post('/api/game/analyze', async (req, res) => {
         }
     }
 
-    // 3. Initiate analysis promise and track in inFlightAnalyses
-    const analysisPromise = (async () => {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 75000);
+    // 3. Helper to communicate with Python microservice with retry backoff
+    const fetchWithRetry = async (maxRetries = 2, delayMs = 600) => {
+        let lastError = null;
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 75000);
 
-        try {
-            const response = await fetch(`${pythonServiceUrl}/api/analyze-game`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    gameId: gameId || `match_${Date.now()}`,
-                    pgn,
-                    includeCoach: includeCoach !== false
-                }),
-                signal: controller.signal
-            });
+            try {
+                const response = await fetch(`${pythonServiceUrl}/api/analyze-game`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        gameId: gameId || `match_${Date.now()}`,
+                        pgn,
+                        includeCoach: includeCoach !== false
+                    }),
+                    signal: controller.signal
+                });
 
-            clearTimeout(timeoutId);
-            const data = await response.json();
+                clearTimeout(timeoutId);
+                const data = await response.json();
 
-            if (!response.ok) {
-                const errorMsg = (typeof data?.detail === 'string' ? data.detail : JSON.stringify(data?.detail)) || `Python service returned ${response.status}`;
-                throw new Error(errorMsg);
+                if (!response.ok) {
+                    const errorMsg = (typeof data?.detail === 'string' ? data.detail : JSON.stringify(data?.detail)) || `Python service returned ${response.status}`;
+                    throw new Error(errorMsg);
+                }
+
+                return data;
+            } catch (err) {
+                clearTimeout(timeoutId);
+                lastError = err;
+                if (attempt < maxRetries) {
+                    await new Promise(r => setTimeout(r, delayMs * (attempt + 1)));
+                }
             }
+        }
+        throw lastError;
+    };
+
+    // 4. Initiate analysis promise and track in inFlightAnalyses
+    const analysisPromise = (async () => {
+        try {
+            const data = await fetchWithRetry();
 
             // Save result in memory cache (capped at 100 matches)
             if (analysisCache.size >= 100) {
@@ -91,7 +143,6 @@ router.post('/api/game/analyze', async (req, res) => {
             analysisCache.set(cacheKey, data);
             return data;
         } finally {
-            clearTimeout(timeoutId);
             inFlightAnalyses.delete(cacheKey);
         }
     })();

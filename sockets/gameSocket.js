@@ -136,6 +136,16 @@ function initGameSocket(io) {
         const whiteToken = 'tok_' + Math.random().toString(36).substring(2, 14);
         const blackToken = 'tok_' + Math.random().toString(36).substring(2, 14);
 
+        try {
+            const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
+            chess.setHeader('Event', 'Chessyy Live Match');
+            chess.setHeader('Site', 'Chessyy (https://chessyy.onrender.com)');
+            chess.setHeader('Date', dateStr);
+            chess.setHeader('Round', '1');
+            chess.setHeader('White', safeWhiteName);
+            chess.setHeader('Black', safeBlackName);
+        } catch (e) {}
+
         games[gameId] = {
             gameId,
             chess,

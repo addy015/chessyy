@@ -9,7 +9,6 @@ import StepperControls from '../components/review/StepperControls';
 import MoveJournal from '../components/review/MoveJournal';
 import SuggestionBox from '../components/review/SuggestionBox';
 import CoachCard from '../components/review/CoachCard';
-import MatchCardModal from '../components/review/MatchCardModal';
 import { downloadMatchPgn } from '../utils/matchExport';
 import { useUser } from '../context/UserContext';
 import { useSound } from '../context/SoundContext';
@@ -20,6 +19,10 @@ function parsePositionsFromPgn(pgn) {
   const game = new Chess();
   const fens = [game.fen()];
   const moves = [];
+
+  if (!pgn || !pgn.trim()) {
+    return { fens, moves };
+  }
 
   let loaded = false;
   try {
@@ -86,18 +89,15 @@ export default function ReviewPage() {
   const [activePgn] = useState(() => {
     try {
       const stored = sessionStorage.getItem('chessyy_review_pgn');
-      return stored && stored.trim() ? stored.trim() : DEMO_PGN;
-    } catch (e) {
+      if (stored !== null) return stored.trim();
       return DEMO_PGN;
+    } catch (e) {
+      return '';
     }
   });
 
   const parsedData = useMemo(() => {
-    let result = parsePositionsFromPgn(activePgn);
-    if (result.moves.length === 0 && activePgn !== DEMO_PGN) {
-      result = parsePositionsFromPgn(DEMO_PGN);
-    }
-    return result;
+    return parsePositionsFromPgn(activePgn);
   }, [activePgn]);
 
   const { fens, moves: parsedMoves } = parsedData;
@@ -112,7 +112,6 @@ export default function ReviewPage() {
   const [analysisData, setAnalysisData] = useState(null);
   const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(true);
   const [isOffline, setIsOffline] = useState(false);
-  const [isCardModalOpen, setIsCardModalOpen] = useState(false);
 
   // Official PGN download handler
   const handleDownloadPgn = useCallback(() => {
@@ -191,9 +190,20 @@ export default function ReviewPage() {
   );
 
   // Core fetch function for analysis
-  const executeAnalysisFetch = useCallback(async () => {
+  const executeAnalysisFetch = useCallback(async (isRetry = false) => {
     if (parsedMoves.length === 0) {
       setIsLoadingAnalysis(false);
+      setIsOffline(false);
+      setAnalysisData({
+        whiteAccuracy: '—',
+        blackAccuracy: '—',
+        evalGraph: [0.0],
+        moves: [],
+        coachSummary: {
+          whiteTip: 'No moves were played in this match.',
+          blackTip: 'No moves were played in this match.',
+        },
+      });
       return;
     }
 
@@ -216,6 +226,12 @@ export default function ReviewPage() {
       setIsOffline(false);
     } catch (err) {
       console.error('[ReviewPage] Analysis fetch error:', err);
+      if (!isRetry) {
+        setTimeout(() => {
+          executeAnalysisFetch(true);
+        }, 1200);
+        return;
+      }
       setIsOffline(true);
     } finally {
       setIsLoadingAnalysis(false);
@@ -233,7 +249,7 @@ export default function ReviewPage() {
 
     setRetryCount((prev) => prev + 1);
     setRetryCooldown(10); // 10-second strict cooldown to prevent spamming
-    executeAnalysisFetch();
+    executeAnalysisFetch(true);
   }, [isLoadingAnalysis, retryCooldown, retryCount, executeAnalysisFetch]);
 
   // Display chess instance for current ply FEN
@@ -313,13 +329,12 @@ export default function ReviewPage() {
       <Masthead />
 
       <div className="review-layout">
-        {/* Header with White & Black Accuracy Pills, Card & PGN Export */}
+        {/* Header with White & Black Accuracy Pills and PGN Export */}
         <AccuracyHeader
           whiteHandle={players?.white || 'WHITE'}
           blackHandle={players?.black || 'BLACK'}
           whiteAccuracy={analysisData?.whiteAccuracy !== undefined ? analysisData.whiteAccuracy : '—'}
           blackAccuracy={analysisData?.blackAccuracy !== undefined ? analysisData.blackAccuracy : '—'}
-          onExportCard={() => setIsCardModalOpen(true)}
           onDownloadPgn={handleDownloadPgn}
         />
 
@@ -378,15 +393,6 @@ export default function ReviewPage() {
           />
         </aside>
       </div>
-
-      {/* 1-Click Shareable Match Summary Card Modal */}
-      <MatchCardModal
-        isOpen={isCardModalOpen}
-        onClose={() => setIsCardModalOpen(false)}
-        players={players}
-        analysisData={analysisData}
-        moves={journalMoves}
-      />
 
       <Footer />
     </>
