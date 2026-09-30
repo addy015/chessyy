@@ -1,0 +1,22 @@
+# What this file does:
+# This is a list that tells the Python installer (pip)
+# exactly which packages (libraries) to download and install.
+#
+# Running the command:
+#   pip install -r requirements.txt
+# -------------------------------------------------------------------------
+
+# Web Framework & Server
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+pydantic>=2.6.0
+
+# Chess Logic & UCI Engine Interface
+python-chess>=1.999
+
+# Google Gemini API SDK (Official SDK)
+google-genai>=0.1.1
+
+# Environment Variable Management & HTTP Client
+python-dotenv>=1.0.0
+requests>=2.31.0

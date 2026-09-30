@@ -1,0 +1,30 @@
+{
+  "name": "chessyy",
+  "version": "2.0.0",
+  "description": "CHESSYY - Precision Real-time Chess Arena & Post-Match AI Engine Review",
+  "main": "app.js",
+  "scripts": {
+    "dev": "node --watch app.js",
+    "dev:client": "npm --prefix client run dev",
+    "build:client": "npm --prefix client run build",
+    "ai": ".\\ai_service\\.venv\\Scripts\\python.exe -m uvicorn main:app --app-dir ai_service --host 127.0.0.1 --port 8000 --reload",
+    "dev:all": "concurrently -n \"NODE,CLIENT,PYTHON\" -c \"cyan,green,magenta\" \"npm run dev\" \"npm run dev:client\" \"npm run ai\"",
+    "start": "node app.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "chess.js": "^1.4.0",
+    "dotenv": "^17.2.4",
+    "ejs": "^4.0.1",
+    "express": "^5.2.1",
+    "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5",
+    "socket.io-client": "^4.8.3"
+  }
+}
