@@ -46,13 +46,9 @@ export default function AccuracyHeader({
           className="btn-step"
           onClick={onDownloadPgn}
           style={{
-            background: 'var(--paper)',
-            border: '1px solid var(--ink)',
-            cursor: 'pointer',
-            display: 'flex',
+            display: 'inline-flex',
             alignItems: 'center',
             gap: '6px',
-            fontWeight: 700,
           }}
           title="Download official match PGN file"
         >
