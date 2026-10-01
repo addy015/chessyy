@@ -172,6 +172,9 @@ function initGameSocket(io) {
             isFinished: false
         };
 
+        whiteSocket.gameId = gameId;
+        blackSocket.gameId = gameId;
+
         // Join both players to the same Socket.io room
         whiteSocket.join(gameId);
         blackSocket.join(gameId);
@@ -353,78 +356,6 @@ function initGameSocket(io) {
             startGameSession(whiteSocket, blackSocket, gameId, tc, whiteName, blackName);
         });
 
-        // ---------------------------------------------------------
-        // 1d. Player Reconnection Handshake (30s Grace Period)
-        // ---------------------------------------------------------
-        socket.on('reconnectGame', (data) => {
-            const { gameId, playerToken } = data || {};
-            if (!gameId || !playerToken || !games[gameId] || games[gameId].isFinished) {
-                return socket.emit('reconnectFailed', { message: 'Match no longer active or expired.' });
-            }
-
-            const game = games[gameId];
-            const isWhite = game.whiteToken === playerToken;
-            const isBlack = game.blackToken === playerToken;
-
-            if (!isWhite && !isBlack) {
-                return socket.emit('reconnectFailed', { message: 'Invalid player session token.' });
-            }
-
-            const role = isWhite ? 'w' : 'b';
-            const oldSocketId = isWhite ? game.white : game.black;
-
-            // Clear 30s grace period timeout if active
-            if (game.disconnectTimers && game.disconnectTimers[role]) {
-                clearTimeout(game.disconnectTimers[role]);
-                delete game.disconnectTimers[role];
-                console.log(`[Socket] Reconnect: Canceled 30s grace timer for ${role} in ${gameId}`);
-            }
-
-            // Update socket references
-            if (oldSocketId && game.sockets[oldSocketId]) {
-                delete game.sockets[oldSocketId];
-            }
-            if (isWhite) {
-                game.white = socket.id;
-            } else {
-                game.black = socket.id;
-            }
-            game.sockets[socket.id] = socket;
-            socket.join(gameId);
-
-            // Inform opponent that player has reconnected
-            socket.to(gameId).emit('opponentReconnected', { role });
-
-            // Send full match snapshot to the reconnecting player
-            const historyVerbose = game.chess.history({ verbose: true });
-            const lastMoveObj = historyVerbose.length > 0 ? {
-                from: historyVerbose[historyVerbose.length - 1].from,
-                to: historyVerbose[historyVerbose.length - 1].to
-            } : null;
-
-            socket.emit('gameReconnected', {
-                gameId,
-                role,
-                playerToken,
-                fen: game.chess.fen(),
-                history: historyVerbose.map(m => m.san),
-                lastMove: lastMoveObj,
-                clocks: {
-                    isTimed: game.clocks.isTimed,
-                    whiteMs: game.clocks.whiteMs,
-                    blackMs: game.clocks.blackMs,
-                    incMs: game.clocks.incMs,
-                    activeTurn: game.chess.turn(),
-                },
-                players: {
-                    white: game.whiteName,
-                    black: game.blackName,
-                },
-                chat: game.chat || [],
-            });
-
-            console.log(`[Socket] Player ${role} (${isWhite ? game.whiteName : game.blackName}) successfully reconnected to ${gameId}`);
-        });
 
         // ---------------------------------------------------------
         // 2. Move Execution & Turn Validation
@@ -514,7 +445,7 @@ function initGameSocket(io) {
         // 3. Ephemeral In-Game Chat (RAM only, auto-cleans on teardown)
         // ---------------------------------------------------------
         socket.on('sendChatMessage', (data) => {
-            const gameId = Object.keys(games).find(id =>
+            const gameId = socket.gameId || Object.keys(games).find(id =>
                 games[id].white === socket.id || games[id].black === socket.id
             );
 
@@ -525,11 +456,15 @@ function initGameSocket(io) {
             if (!trimmedMsg) return;
 
             const game = games[gameId];
+            if (!game) return;
+
             const senderRole = game.white === socket.id ? 'White' : 'Black';
             const senderName = game.white === socket.id ? (game.whiteName || 'White') : (game.blackName || 'Black');
             const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
             const chatEntry = {
+                id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+                clientMsgId: data.clientMsgId || null,
                 sender: senderRole,
                 senderName,
                 message: trimmedMsg,
@@ -657,6 +592,7 @@ function initGameSocket(io) {
 
             // Re-join Socket.io room
             socket.join(gameId);
+            socket.gameId = gameId;
 
             // Inform opponent that player has returned
             socket.to(gameId).emit('opponentReconnected', {
@@ -678,14 +614,21 @@ function initGameSocket(io) {
                 }
             }
 
+            const historyVerbose = game.chess.history({ verbose: true });
+            const lastMoveObj = historyVerbose.length > 0 ? {
+                from: historyVerbose[historyVerbose.length - 1].from,
+                to: historyVerbose[historyVerbose.length - 1].to
+            } : null;
+
             // Send full match snapshot to reconnecting player
             socket.emit('gameReconnected', {
                 gameId,
                 role,
                 playerToken,
                 fen: game.chess.fen(),
-                history: game.chess.history({ verbose: true }),
+                history: historyVerbose,
                 pgn: game.chess.pgn(),
+                lastMove: lastMoveObj,
                 clocks: {
                     isTimed: game.clocks.isTimed,
                     whiteMs: currentWhiteMs,

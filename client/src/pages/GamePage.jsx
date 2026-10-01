@@ -262,6 +262,17 @@ export default function GamePage() {
     const handleStartGame = (data) => {
       setIsWaiting(false);
       setReconnectGraceSeconds(null);
+      chessRef.current.reset();
+      setLastMove(null);
+      setSelectedSquare(null);
+      setPossibleMoves([]);
+      setPendingPromotion(null);
+      setChatMessages([]);
+      setCapturedPieces({ white: [], black: [] });
+      setIsGameOver(false);
+      setGameOverReason('');
+      triggerRenderRef.current();
+
       if (data && data.clocks) {
         setClocks({
           isTimed: Boolean(data.clocks.isTimed),
@@ -278,6 +289,7 @@ export default function GamePage() {
         setMatchPlayers(roster);
         try {
           sessionStorage.setItem('chessyy_review_players', JSON.stringify(roster));
+          sessionStorage.setItem('chessyy_review_pgn', '');
         } catch {}
       }
       showToastRef.current('Opponent connected. Match initiated.');
@@ -343,13 +355,46 @@ export default function GamePage() {
       const oppName = role === 'w' ? roster.black : roster.white;
       setOpponentHandle(oppName);
 
-      if (data.fen) {
+      // Restore complete chess state and move history (do NOT reset with chess.load(fen))
+      let loaded = false;
+      if (data.pgn && data.pgn.trim()) {
+        try {
+          chessRef.current.loadPgn(data.pgn);
+          loaded = true;
+        } catch (err) {
+          console.warn('[Socket] Failed to load PGN, trying history replay:', err);
+          loaded = false;
+        }
+      }
+
+      if (!loaded && Array.isArray(data.history) && data.history.length > 0) {
+        try {
+          chessRef.current.reset();
+          for (const m of data.history) {
+            chessRef.current.move(m);
+          }
+          loaded = true;
+        } catch (err) {
+          console.warn('[Socket] Failed to replay history, falling back to FEN:', err);
+          loaded = false;
+        }
+      }
+
+      if (!loaded && data.fen) {
         chessRef.current.load(data.fen);
       }
 
-      if (Array.isArray(data.history) && data.history.length > 0) {
-        const last = data.history[data.history.length - 1];
-        setLastMove({ from: last.from, to: last.to });
+      // Restore last move indicator
+      if (data.lastMove && data.lastMove.from && data.lastMove.to) {
+        setLastMove(data.lastMove);
+      } else {
+        const hist = chessRef.current.history({ verbose: true });
+        if (hist.length > 0) {
+          const last = hist[hist.length - 1];
+          setLastMove({ from: last.from, to: last.to });
+        } else {
+          setLastMove(null);
+        }
       }
 
       if (data.clocks) {
@@ -378,7 +423,7 @@ export default function GamePage() {
 
       try {
         sessionStorage.setItem('chessyy_review_players', JSON.stringify(roster));
-        sessionStorage.setItem('chessyy_review_pgn', data.pgn || chessRef.current.pgn());
+        sessionStorage.setItem('chessyy_review_pgn', chessRef.current.pgn() || data.pgn || '');
       } catch {}
 
       showToastRef.current('Reconnected to live match!');
@@ -416,16 +461,33 @@ export default function GamePage() {
 
     // Verified Move from Server
     const handleMove = (move) => {
-      const res = chessRef.current.move(move);
-      if (res) {
-        setLastMove(move);
-        triggerRenderRef.current();
-        updateCapturedPiecesRef.current();
-        const isSelf = playerRoleRef.current === res.color;
-        playSfxRef.current(res, isSelf);
-        try {
-          sessionStorage.setItem('chessyy_review_pgn', chessRef.current.pgn());
-        } catch {}
+      try {
+        const historyVerbose = chessRef.current.history({ verbose: true });
+        const lastApplied = historyVerbose.length > 0 ? historyVerbose[historyVerbose.length - 1] : null;
+
+        // Skip if move was already executed locally (optimistic move echo)
+        if (
+          lastApplied &&
+          lastApplied.from === move.from &&
+          lastApplied.to === move.to &&
+          (!move.promotion || lastApplied.promotion === move.promotion)
+        ) {
+          return;
+        }
+
+        const res = chessRef.current.move(move);
+        if (res) {
+          setLastMove(move);
+          triggerRenderRef.current();
+          updateCapturedPiecesRef.current();
+          const isSelf = playerRoleRef.current === res.color;
+          playSfxRef.current(res, isSelf);
+          try {
+            sessionStorage.setItem('chessyy_review_pgn', chessRef.current.pgn());
+          } catch {}
+        }
+      } catch (err) {
+        console.warn('[Socket] Error applying incoming move:', err);
       }
     };
 
@@ -447,16 +509,22 @@ export default function GamePage() {
 
     // In-game Chat Message Received
     const handleReceiveChatMessage = (chatEntry) => {
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          sender: chatEntry.sender || 'PLAYER',
-          senderLabel: chatEntry.senderName || chatEntry.sender,
-          text: chatEntry.message,
-          timestamp: chatEntry.timestamp,
-          isSelf: chatEntry.senderName === safeHandle,
-        },
-      ]);
+      setChatMessages((prev) => {
+        if (chatEntry.clientMsgId && prev.some((m) => m.id === chatEntry.clientMsgId)) {
+          return prev;
+        }
+        return [
+          ...prev,
+          {
+            id: chatEntry.id || chatEntry.clientMsgId || ('srv_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)),
+            sender: chatEntry.sender || 'PLAYER',
+            senderLabel: chatEntry.senderName || chatEntry.sender,
+            text: chatEntry.message,
+            timestamp: chatEntry.timestamp,
+            isSelf: chatEntry.senderName === safeHandle,
+          },
+        ];
+      });
     };
 
     // Draw / Rematch Proposals
@@ -676,9 +744,28 @@ export default function GamePage() {
     socket?.emit('respondEndGame', false);
   };
 
-  const handleSendMessage = (text) => {
-    socket?.emit('sendChatMessage', { message: text });
-  };
+  const handleSendMessage = useCallback((text) => {
+    if (!text || !text.trim()) return;
+    const trimmed = text.trim().slice(0, 200);
+    const clientMsgId = 'cmsg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const selfLabel = (myHandleRef.current || 'ANONYMOUS').toUpperCase().substring(0, 10);
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    // Optimistic instant render (0ms latency for sender)
+    setChatMessages((prev) => [
+      ...prev,
+      {
+        id: clientMsgId,
+        sender: playerRoleRef.current === 'w' ? 'White' : 'Black',
+        senderLabel: selfLabel,
+        text: trimmed,
+        timestamp: timeStr,
+        isSelf: true,
+      },
+    ]);
+
+    socket?.emit('sendChatMessage', { message: trimmed, clientMsgId });
+  }, [socket]);
 
   const handlePlayAgain = () => {
     try {

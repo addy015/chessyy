@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-export default function LiveChat({ messages = [], onSendMessage }) {
+function LiveChat({ messages = [], onSendMessage }) {
   const [inputText, setInputText] = useState('');
   const scrollContainerRef = useRef(null);
   const isInitialMount = useRef(true);
@@ -66,7 +66,7 @@ export default function LiveChat({ messages = [], onSendMessage }) {
           </div>
         ) : (
           messages.map((m, idx) => (
-            <div key={idx} className={`dispatch-msg ${m.isSelf ? 'self' : ''}`}>
+            <div key={m.id || idx} className={`dispatch-msg ${m.isSelf ? 'self' : ''}`}>
               <div className="dispatch-msg-header">
                 <span className="dispatch-sender">{m.senderLabel || m.sender}:</span>
                 <span className="dispatch-time">{m.timestamp || ''}</span>
@@ -96,3 +96,5 @@ export default function LiveChat({ messages = [], onSendMessage }) {
     </div>
   );
 }
+
+export default React.memo(LiveChat);

@@ -26,7 +26,12 @@ function parsePositionsFromPgn(pgn) {
 
   let loaded = false;
   try {
-    loaded = game.load_pgn ? game.load_pgn(pgn, { sloppy: true }) : game.loadPgn(pgn);
+    if (game.load_pgn) {
+      loaded = Boolean(game.load_pgn(pgn, { sloppy: true }));
+    } else {
+      game.loadPgn(pgn);
+      loaded = game.history().length > 0;
+    }
   } catch (e) {
     loaded = false;
   }
