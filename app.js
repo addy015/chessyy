@@ -15,19 +15,82 @@ require('dotenv').config(); // Load environment settings from .env file
 const webRoutes = require('./routes/web');
 const { initGameSocket } = require('./sockets/gameSocket');
 
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+
 // Initialize Express app and attach it to an HTTP server
 const app = express();
 const server = http.createServer(app);
 
-// Attach Socket.io to the HTTP server for real-time WebSocket communication
-const io = socket(server);
+// Security: Disable Express fingerprinting
+app.disable('x-powered-by');
+
+// Security: Configure HTTP Security Headers via Helmet
+app.use(
+    helmet({
+        contentSecurityPolicy: {
+            directives: {
+                defaultSrc: ["'self'"],
+                scriptSrc: ["'self'", "'unsafe-inline'"],
+                styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+                fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+                imgSrc: ["'self'", 'data:', 'blob:'],
+                connectSrc: ["'self'", 'ws:', 'wss:'],
+                objectSrc: ["'none'"],
+                upgradeInsecureRequests: [],
+            },
+        },
+        crossOriginEmbedderPolicy: false,
+    })
+);
+
+// Security: Global rate limiter for API endpoints (prevent abuse & DoS)
+const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 100,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: { error: 'TOO_MANY_REQUESTS', detail: 'Too many requests, please try again later.' }
+});
+app.use('/api/', apiLimiter);
+
+// Security: WebSocket Origin allowlist (defends against Cross-Site WebSocket Hijacking - CSWSH)
+const allowedSocketOrigins = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:5000',
+    'http://127.0.0.1:5000',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'https://chessyy.onrender.com'
+];
+if (process.env.ALLOWED_ORIGINS) {
+    allowedSocketOrigins.push(...process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()));
+}
+
+// Attach Socket.io with CSWSH protection and packet buffer limits
+const io = socket(server, {
+    cors: {
+        origin: (origin, callback) => {
+            // Allow same-origin / non-browser / trusted clients
+            if (!origin || allowedSocketOrigins.includes(origin)) {
+                return callback(null, true);
+            }
+            console.warn(`[Security] Blocked unauthorized WebSocket handshake origin: ${origin}`);
+            return callback(new Error('Cross-Origin WebSocket connection denied by security policy'), false);
+        },
+        methods: ['GET', 'POST'],
+        credentials: true
+    },
+    maxHttpBufferSize: 1e5 // 100 KB payload cap per WebSocket packet
+});
 
 // View engine: Not needed (Pure React SPA served from /client/dist)
 
 // Middleware:
-// 1. express.json() parses incoming JSON request bodies (e.g. from fetch calls).
+// 1. express.json({ limit: '64kb' }) enforces strict payload cap to prevent RAM exhaustion.
 // 2. express.static() serves React build from /client/dist and assets from /public.
-app.use(express.json());
+app.use(express.json({ limit: '64kb' }));
 
 const clientDistPath = path.join(__dirname, 'client', 'dist');
 if (fs.existsSync(clientDistPath)) {

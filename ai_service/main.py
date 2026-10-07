@@ -58,14 +58,27 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS setup: allows Node.js server or frontend to make API calls without being blocked by browser security
+# CORS setup: Restrict origins to authorized Node.js/frontend ports
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
+if allowed_origins_env:
+    allowed_origins = [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
+else:
+    allowed_origins = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5000",
+        "http://127.0.0.1:5000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
-    )
+)
 
 
 # -------------------------------------------------------------------------
@@ -80,9 +93,9 @@ class HealthResponse(BaseModel):
 
 
 class AnalyzeGameRequest(BaseModel):
-    # What Node.js sends us to analyze:
-    gameId: str = Field(..., description="Unique match identifier")
-    pgn: str = Field(..., description="Full chess game text in standard PGN format")
+    # What Node.js sends us to analyze (strictly validated):
+    gameId: str = Field(..., max_length=100, pattern=r"^[a-zA-Z0-9_\-\.]{1,100}$", description="Unique match identifier")
+    pgn: str = Field(..., max_length=30000, description="Full chess game text in standard PGN format")
     includeCoach: bool = Field(default=True, description="True if we should ask Gemini for coaching tips")
 
 
@@ -173,9 +186,10 @@ def analyze_game(request: AnalyzeGameRequest):
             detail={"error": "INVALID_PGN", "detail": str(ve)}
         )
     except Exception as e:
+        print(f"[AI Service] Analysis execution error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"error": "ANALYSIS_FAILED", "detail": str(e)}
+            detail={"error": "ANALYSIS_FAILED", "detail": "An internal error occurred during game evaluation."}
         )
 
     # 4. If requested, generate coaching tips with Google Gemini

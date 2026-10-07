@@ -13,6 +13,39 @@
 // -------------------------------------------------------------------------
 
 const { Chess } = require('chess.js');
+const crypto = require('crypto');
+
+// Rate limiter helper per socket connection (Fail-closed design)
+function checkSocketRateLimit(socket, action, maxRequests, windowMs) {
+    try {
+        if (!socket || !socket._rateLimits) {
+            if (socket) socket._rateLimits = {};
+            else return false;
+        }
+        const now = Date.now();
+        let limiter = socket._rateLimits[action];
+        if (!limiter || now > limiter.resetTime) {
+            socket._rateLimits[action] = { count: 1, resetTime: now + windowMs };
+            return true;
+        }
+        if (limiter.count >= maxRequests) {
+            return false;
+        }
+        limiter.count += 1;
+        return true;
+    } catch (e) {
+        return false; // Fail closed on error
+    }
+}
+
+// Constant-time token comparison against timing attacksw
+function safeTokenCompare(knownToken, candidateToken) {
+    if (typeof knownToken !== 'string' || typeof candidateToken !== 'string') return false;
+    const bufA = Buffer.from(knownToken, 'utf-8');
+    const bufB = Buffer.from(candidateToken, 'utf-8');
+    if (bufA.length !== bufB.length) return false;
+    return crypto.timingSafeEqual(bufA, bufB);
+}
 
 const TIME_PRESETS = {
     'bullet_1_0':  { id: 'bullet_1_0',  label: '1 min',      initialMs: 60 * 1000,       incMs: 0 },
@@ -133,8 +166,8 @@ function initGameSocket(io) {
         const now = Date.now();
         const safeWhiteName = sanitizePlayerName(whiteName);
         const safeBlackName = sanitizePlayerName(blackName);
-        const whiteToken = 'tok_' + Math.random().toString(36).substring(2, 14);
-        const blackToken = 'tok_' + Math.random().toString(36).substring(2, 14);
+        const whiteToken = 'tok_' + crypto.randomBytes(16).toString('hex');
+        const blackToken = 'tok_' + crypto.randomBytes(16).toString('hex');
 
         try {
             const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
@@ -233,6 +266,10 @@ function initGameSocket(io) {
         // 1. Random Matchmaking Queue (Strictly isolated by time control)
         // ---------------------------------------------------------
         socket.on('joinRandomQueue', (data) => {
+            if (!checkSocketRateLimit(socket, 'matchmaking', 10, 10000)) {
+                return socket.emit('privateRoomError', { message: 'Action rate limit exceeded. Please wait a moment.' });
+            }
+
             const rawTc = data && data.timeControl ? data.timeControl : DEFAULT_TIME_PRESET;
             const tc = TIME_PRESETS[rawTc] ? rawTc : DEFAULT_TIME_PRESET;
             const incomingPlayerName = sanitizePlayerName(data && data.playerName);
@@ -255,7 +292,7 @@ function initGameSocket(io) {
                 const blackName = incomingPlayerName;
                 waitingQueues[tc] = null;
 
-                const gameId = `game_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+                const gameId = `game_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
                 console.log(`[Socket] Random match paired for [${tc}]: White=${whiteName}(${whiteSocket.id}), Black=${blackName}(${blackSocket.id})`);
                 startGameSession(whiteSocket, blackSocket, gameId, tc, whiteName, blackName);
             }
@@ -265,6 +302,9 @@ function initGameSocket(io) {
         // 1b. Private Room: Host Creation (Host selects time control)
         // ---------------------------------------------------------
         socket.on('hostPrivateRoom', (data) => {
+            if (!checkSocketRateLimit(socket, 'matchmaking', 10, 10000)) {
+                return socket.emit('privateRoomError', { message: 'Action rate limit exceeded. Please wait a moment.' });
+            }
             const rawCode = data && data.roomCode ? String(data.roomCode).trim().toUpperCase() : null;
             if (!rawCode || !/^[A-Z0-9_-]{3,16}$/.test(rawCode)) {
                 return socket.emit('privateRoomError', { message: 'Invalid room code format.' });
@@ -307,6 +347,10 @@ function initGameSocket(io) {
         // 1c. Private Room: Guest Join
         // ---------------------------------------------------------
         socket.on('joinPrivateRoom', (data) => {
+            if (!checkSocketRateLimit(socket, 'matchmaking', 10, 10000)) {
+                return socket.emit('privateRoomError', { message: 'Action rate limit exceeded. Please wait a moment.' });
+            }
+
             const rawCode = data && data.roomCode ? String(data.roomCode).trim().toUpperCase() : null;
             if (!rawCode) {
                 return socket.emit('privateRoomError', { message: 'Room code is required.' });
@@ -351,7 +395,7 @@ function initGameSocket(io) {
             const tc = room.timeControl || DEFAULT_TIME_PRESET;
             privateRooms.delete(rawCode); // Room is now active match
 
-            const gameId = `friend_${rawCode}_${Date.now()}`;
+            const gameId = `friend_${rawCode}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
             console.log(`[Socket] Private room matched: ${rawCode} (White: ${whiteName}, Black: ${blackName}, TC: ${tc})`);
             startGameSession(whiteSocket, blackSocket, gameId, tc, whiteName, blackName);
         });
@@ -361,6 +405,10 @@ function initGameSocket(io) {
         // 2. Move Execution & Turn Validation
         // ---------------------------------------------------------
         socket.on('move', (move) => {
+            if (!checkSocketRateLimit(socket, 'move', 20, 2000)) {
+                return socket.emit('invalidMove', move);
+            }
+
             // Find which game room this socket belongs to
             const gameId = Object.keys(games).find(id =>
                 games[id].white === socket.id || games[id].black === socket.id
@@ -445,7 +493,12 @@ function initGameSocket(io) {
         // 3. Ephemeral In-Game Chat (RAM only, auto-cleans on teardown)
         // ---------------------------------------------------------
         socket.on('sendChatMessage', (data) => {
-            const gameId = socket.gameId || Object.keys(games).find(id =>
+            if (!checkSocketRateLimit(socket, 'chat', 5, 3000)) {
+                return socket.emit('chatRateLimit', { message: 'Chat rate limit reached. Please wait a moment.' });
+            }
+
+            // Strictly verify sender belongs to the active game room
+            const gameId = Object.keys(games).find(id =>
                 games[id].white === socket.id || games[id].black === socket.id
             );
 
@@ -456,15 +509,15 @@ function initGameSocket(io) {
             if (!trimmedMsg) return;
 
             const game = games[gameId];
-            if (!game) return;
+            if (!game || game.isFinished) return;
 
             const senderRole = game.white === socket.id ? 'White' : 'Black';
             const senderName = game.white === socket.id ? (game.whiteName || 'White') : (game.blackName || 'Black');
             const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
             const chatEntry = {
-                id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
-                clientMsgId: data.clientMsgId || null,
+                id: 'msg_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex'),
+                clientMsgId: (typeof data.clientMsgId === 'string' && data.clientMsgId.length <= 64) ? data.clientMsgId : null,
                 sender: senderRole,
                 senderName,
                 message: trimmedMsg,
@@ -508,6 +561,9 @@ function initGameSocket(io) {
         // 5. Mutual Draw / Reset Negotiation
         // ---------------------------------------------------------
         socket.on('requestEndGame', () => {
+            if (!checkSocketRateLimit(socket, 'drawOffer', 3, 30000)) {
+                return;
+            }
             const gameId = Object.keys(games).find(id =>
                 games[id].white === socket.id || games[id].black === socket.id
             );
@@ -558,11 +614,11 @@ function initGameSocket(io) {
                 return socket.emit('reconnectFailed', { message: 'Game no longer active or session finished.' });
             }
 
-            // Verify if playerToken matches White or Black role
+            // Verify if playerToken matches White or Black role using constant-time comparison
             let role = null;
-            if (game.whiteToken === playerToken) {
+            if (safeTokenCompare(game.whiteToken, playerToken)) {
                 role = 'w';
-            } else if (game.blackToken === playerToken) {
+            } else if (safeTokenCompare(game.blackToken, playerToken)) {
                 role = 'b';
             }
 

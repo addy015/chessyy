@@ -10,6 +10,20 @@
 const express = require('express');
 const router = express.Router();
 
+const rateLimit = require('express-rate-limit');
+
+// Security: Dedicated rate limiter for CPU/AI-intensive game analysis
+const analyzeLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000, // 10 minutes
+    limit: 25, // max 25 game analyses per IP per 10 minutes
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: {
+        error: 'RATE_LIMIT_EXCEEDED',
+        detail: 'Analysis request rate limit reached. Please wait before submitting another match.'
+    }
+});
+
 /**
  * Health check endpoint.
  * Returns instant 200 OK without rendering templates so uptime pings don't waste CPU.
@@ -33,7 +47,8 @@ const inFlightAnalyses = new Map();
  */
 function getPgnCacheKey(pgn, includeCoach) {
     if (!pgn || typeof pgn !== 'string') return '';
-    const normalizedMoves = pgn
+    const safePgn = pgn.slice(0, 30000);
+    const normalizedMoves = safePgn
         .replace(/\[.*?\]\s*/g, '')
         .replace(/\{.*?\}/g, '')
         .replace(/\s+/g, ' ')
@@ -47,17 +62,29 @@ function getPgnCacheKey(pgn, includeCoach) {
  * Analysis Proxy API.
  * Takes the chess match PGN text and forwards it to the Python FastAPI microservice (port 8000).
  */
-router.post('/api/game/analyze', async (req, res) => {
+router.post('/api/game/analyze', analyzeLimiter, async (req, res) => {
     const pythonServiceUrl = process.env.PYTHON_SERVICE_URL || 'http://127.0.0.1:8000';
     const { pgn, gameId, includeCoach } = req.body;
 
-    // Validate incoming PGN
-    if (!pgn || typeof pgn !== 'string') {
+    // Validate incoming PGN: type, presence, and max length (prevents DoS/ReDoS/resource exhaustion)
+    if (!pgn || typeof pgn !== 'string' || pgn.trim().length === 0) {
         return res.status(400).json({
             error: 'INVALID_PGN',
-            detail: 'A valid PGN string is required for analysis.'
+            detail: 'A valid non-empty PGN string is required for analysis.'
         });
     }
+
+    if (pgn.length > 30000) {
+        return res.status(400).json({
+            error: 'PAYLOAD_TOO_LARGE',
+            detail: 'PGN exceeds maximum allowed size (30,000 characters).'
+        });
+    }
+
+    // Validate and sanitize gameId
+    const safeGameId = (typeof gameId === 'string' && /^[a-zA-Z0-9_\-\.]{1,64}$/.test(gameId.trim()))
+        ? gameId.trim()
+        : `match_${Date.now()}`;
 
     const cacheKey = getPgnCacheKey(pgn, includeCoach);
 
@@ -103,7 +130,7 @@ router.post('/api/game/analyze', async (req, res) => {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        gameId: gameId || `match_${Date.now()}`,
+                        gameId: safeGameId,
                         pgn,
                         includeCoach: includeCoach !== false
                     }),

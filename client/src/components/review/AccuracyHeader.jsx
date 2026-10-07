@@ -50,7 +50,7 @@ export default function AccuracyHeader({
             alignItems: 'center',
             gap: '6px',
           }}
-          title="Download official match PGN file"
+          title="Download PGN"
         >
           <span>PGN</span> &darr;
         </button>
