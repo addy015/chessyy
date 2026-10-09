@@ -1,6 +1,4 @@
 // What this file does:
-// High-fidelity Chess.com acoustic sound engine with zero-latency Web Audio API.
-// Features:
 // 1. Preloads and decodes authentic Chess.com SFXs (move, capture, check, castle, promote, low-time, game-over).
 // 2. Uses in-memory decoded AudioBuffers for sub-millisecond playback.
 // 3. Includes procedural synthesis fallback so sound NEVER fails even if offline.
@@ -31,38 +29,74 @@ const SOUND_FILES = {
 
 // In-memory cache of decoded AudioBuffers (PCM)
 const audioBufferCache = new Map();
+// Cache of raw downloaded ArrayBuffers prior to user audio gesture
+const rawAudioBuffers = new Map();
+let hasUserInteracted = false;
 
 /**
- * Returns or initializes the AudioContext singleton and handles browser autoplay unlocking.
+ * Returns or initializes the AudioContext singleton on/after a user gesture.
  */
-function getAudioContext() {
+function getAudioContext(fromUserGesture = false) {
+    if (fromUserGesture) {
+        hasUserInteracted = true;
+    }
+    // Prevent unprompted AudioContext creation before any user gesture
+    if (!hasUserInteracted && !fromUserGesture) {
+        return null;
+    }
+
     if (!audioCtx) {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         if (AudioContextClass) {
-            audioCtx = new AudioContextClass();
+            try {
+                audioCtx = new AudioContextClass();
+            } catch (e) {
+                audioCtx = null;
+            }
         }
     }
-    if (audioCtx && audioCtx.state === 'suspended') {
+    if (audioCtx && audioCtx.state === 'suspended' && (hasUserInteracted || fromUserGesture)) {
         audioCtx.resume().catch(() => {});
     }
     return audioCtx;
 }
 
 /**
- * Preloads and decodes all sound effects into RAM for 0ms playback latency.
+ * Prefetches sound files via standard HTTP fetch without touching Web Audio API.
  */
-async function preloadSounds() {
-    const ctx = getAudioContext();
+async function fetchAudioFiles() {
+    for (const [key, path] of Object.entries(SOUND_FILES)) {
+        if (rawAudioBuffers.has(key) || audioBufferCache.has(key)) continue;
+        try {
+            const resp = await fetch(path);
+            if (!resp.ok) continue;
+            const buf = await resp.arrayBuffer();
+            rawAudioBuffers.set(key, buf);
+        } catch (e) {
+            // Ignore prefetch failures
+        }
+    }
+}
+
+/**
+ * Decodes all sound effects into RAM once AudioContext is active.
+ */
+async function preloadSounds(fromUserGesture = false) {
+    const ctx = getAudioContext(fromUserGesture);
     if (!ctx) return;
 
     for (const [key, path] of Object.entries(SOUND_FILES)) {
         if (audioBufferCache.has(key)) continue;
         try {
-            const resp = await fetch(path);
-            if (!resp.ok) continue;
-            const arrayBuf = await resp.arrayBuffer();
-            const decoded = await ctx.decodeAudioData(arrayBuf);
+            let arrayBuf = rawAudioBuffers.get(key);
+            if (!arrayBuf) {
+                const resp = await fetch(path);
+                if (!resp.ok) continue;
+                arrayBuf = await resp.arrayBuffer();
+            }
+            const decoded = await ctx.decodeAudioData(arrayBuf.slice(0));
             audioBufferCache.set(key, decoded);
+            rawAudioBuffers.delete(key);
         } catch (e) {
             // Buffer failed to decode, procedural fallback will be used
         }
@@ -71,22 +105,23 @@ async function preloadSounds() {
 
 // Auto-unlock AudioContext and trigger sound preload on first user interaction
 if (typeof window !== 'undefined') {
+    const unlockEvents = ['pointerdown', 'touchstart', 'keydown', 'click'];
     const unlockAudio = () => {
-        getAudioContext();
-        preloadSounds();
-        window.removeEventListener('click', unlockAudio);
-        window.removeEventListener('keydown', unlockAudio);
-        window.removeEventListener('touchstart', unlockAudio);
+        hasUserInteracted = true;
+        getAudioContext(true);
+        preloadSounds(true);
+        unlockEvents.forEach((ev) => window.removeEventListener(ev, unlockAudio));
     };
-    window.addEventListener('click', unlockAudio, { once: true });
-    window.addEventListener('keydown', unlockAudio, { once: true });
-    window.addEventListener('touchstart', unlockAudio, { once: true });
 
-    // Also attempt eager background preload on DOM ready
+    unlockEvents.forEach((ev) => {
+        window.addEventListener(ev, unlockAudio, { once: true, passive: true });
+    });
+
+    // Network prefetch only — zero AudioContext creation on page load
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', preloadSounds);
+        document.addEventListener('DOMContentLoaded', fetchAudioFiles);
     } else {
-        preloadSounds();
+        fetchAudioFiles();
     }
 }
 
@@ -95,7 +130,7 @@ if (typeof window !== 'undefined') {
  */
 function playBuffer(key, fallbackFn) {
     if (isAudioMuted) return;
-    const ctx = getAudioContext();
+    const ctx = getAudioContext(true);
     if (!ctx) return;
 
     const buffer = audioBufferCache.get(key);

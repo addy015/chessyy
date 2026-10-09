@@ -56,7 +56,7 @@ export default function WaitingModal({
     return (
       <div id="waiting-message" className="editorial-modal-backdrop">
         <div className="editorial-modal-box modal-center">
-          <div className="modal-protocol-tag">PROTOCOL 01 / MATCHMAKING</div>
+          <div className="modal-protocol-tag">01 / MATCHMAKING</div>
           <h2 className="modal-headline">WAITING FOR ANOTHER PLAYER TO JOIN...</h2>
           <p className="modal-body-text">
             You are connected to the server. Game will initiate automatically as soon as an opponent connects.
@@ -75,7 +75,7 @@ export default function WaitingModal({
   return (
     <div id="private-waiting-modal" className="editorial-modal-backdrop">
       <div className="editorial-modal-box modal-center">
-        <div className="modal-protocol-tag">PROTOCOL 02 / PRIVATE MATCH</div>
+        <div className="modal-protocol-tag">02 / PRIVATE MATCH</div>
         <h2 className="modal-headline modal-headline-sm">AWAITING FRIEND TO JOIN</h2>
         <p className="modal-body-text">
           Share this room code or invite link with your friend. You play as <strong>White</strong>; your friend will join as <strong>Black</strong>.

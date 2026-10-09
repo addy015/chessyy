@@ -472,7 +472,8 @@
   text-align: center;
 }
 
-.modal-protocol-tag {
+.modal-protocol-tag,
+.modal-tag {
   font-family: var(--font-mono);
   font-size: 0.72rem;
   font-weight: 700;

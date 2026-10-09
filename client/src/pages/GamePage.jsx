@@ -886,7 +886,7 @@ export default function GamePage() {
         {/* Column 3: Controls Panel & Live Chat */}
         <aside className="controls-panel">
           <div className="panel-header">
-            <span className="panel-title">02 / PROTOCOL &amp; DISPATCH</span>
+            <span className="panel-title">02 / DISPATCH &amp; CHAT</span>
             <SoundToggleButton />
           </div>
 

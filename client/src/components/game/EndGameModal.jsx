@@ -6,7 +6,7 @@ export default function EndGameModal({ isOpen, onAccept, onDecline }) {
   return (
     <div id="end-game-modal" className="editorial-modal-backdrop">
       <div className="editorial-modal-box">
-        <div className="modal-protocol-tag">NEGOTIATION PROTOCOL</div>
+        <div className="modal-protocol-tag">MATCH NEGOTIATION</div>
         <h3 className="modal-headline modal-headline-sm">DRAW / RESET OFFERED</h3>
         <p className="modal-body-text">
           Your opponent has proposed concluding this match by mutual agreement. Do you accept?

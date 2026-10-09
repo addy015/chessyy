@@ -79,13 +79,13 @@ export default function HomePage() {
           {/* Left Hero Content */}
           <div className="hero-content">
             <h1 className="hero-title">
-              THE ARCHITECTURE<br />
-              OF <span className="title-accent">THOUGHT.</span>
+              DON'T BE SHY<br />
+              MAKE A <span className="title-accent">MOVE.</span>
             </h1>
 
             <p className="hero-subtext">
-              64 squares. 32 pieces. Two minds locked in silence. A real-time multiplayer arena. <br />
-              Just 2 players trying to outthink each other before the flag falls.
+              You don't have to be the best, <br />
+              just be better than your opponent.
             </p>
 
             {/* Time Control Selector */}
@@ -214,7 +214,7 @@ export default function HomePage() {
         >
           <div className="editorial-modal-box">
             <div className="modal-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-              <div className="modal-protocol-tag" style={{ marginBottom: 0 }}>PROTOCOL 02 / PRIVATE MATCH</div>
+              <div className="modal-protocol-tag" style={{ marginBottom: 0 }}>02 / PRIVATE MATCH</div>
               <button
                 type="button"
                 className="btn-modal-close"

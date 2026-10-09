@@ -6,7 +6,7 @@ export default function Footer() {
       <div className="editorial-footer-inner">
         <div>CHESSYY / THE GOAT</div>
         <div>64 SQUARES &bull; 32 PIECES &bull; ZERO LATENCY</div>
-        <div>&copy; 2026 CHESSYY. ALL PROTOCOLS VERIFIED.</div>
+        <div>&copy; 2026 CHESSYY. ALL RIGHTS RESERVED.</div>
       </div>
     </footer>
   );
