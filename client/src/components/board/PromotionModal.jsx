@@ -1,5 +1,5 @@
-import React from 'react';
 
+// Dialog displayed when a pawn reaches the opposite back rank to choose a replacement piece
 export default function PromotionModal({ isOpen, onSelectPiece, onCancel }) {
   if (!isOpen) return null;
 
@@ -9,6 +9,7 @@ export default function PromotionModal({ isOpen, onSelectPiece, onCancel }) {
         <div className="modal-protocol-tag">TACTICAL ADVANCEMENT / PROMOTION</div>
         <h3 className="modal-headline modal-headline-sm">PROMOTE YOUR PAWN</h3>
         <p className="modal-body-text">Choose the rank for your promoted pawn:</p>
+        {/* Promotion piece buttons: Queen, Knight, Rook, Bishop */}
         <div className="promotion-piece-grid" id="promotion-piece-grid">
           <button
             type="button"
@@ -47,6 +48,7 @@ export default function PromotionModal({ isOpen, onSelectPiece, onCancel }) {
             <span className="promo-piece-name">BISHOP [B]</span>
           </button>
         </div>
+        {/* Cancel promotion and choose a different move */}
         <div className="modal-actions modal-actions-center" style={{ marginTop: '18px' }}>
           <button
             type="button"

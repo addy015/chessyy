@@ -1,5 +1,5 @@
-import React from 'react';
 
+// Modal dialog shown when opponent proposes a mutual draw
 export default function EndGameModal({ isOpen, onAccept, onDecline }) {
   if (!isOpen) return null;
 
@@ -11,6 +11,7 @@ export default function EndGameModal({ isOpen, onAccept, onDecline }) {
         <p className="modal-body-text">
           Your opponent has proposed concluding this match by mutual agreement. Do you accept?
         </p>
+        {/* Draw offer response buttons */}
         <div className="modal-actions">
           <button type="button" className="btn-editorial" onClick={onDecline}>
             DECLINE ✕
@@ -23,3 +24,4 @@ export default function EndGameModal({ isOpen, onAccept, onDecline }) {
     </div>
   );
 }
+

@@ -1,21 +1,18 @@
-# What this file does:
-# This is the Python web server (built with FastAPI).
-# It listens on port 8000 (internally) and waits for requests from Node.js.
-# 
-# Main jobs:
-# 1. Health check: Makes sure Stockfish is installed and Gemini key is configured.
-# 2. Game Analysis endpoint (/api/analyze-game):
-#    - Receives the chess match moves (PGN).
-#    - Calls analyzer.py to run Stockfish calculations.
-#    - Calls coach.py to get Gemini AI explanations for blunders.
-#    - Sends the complete result back to Node.js as clean JSON.
-# -------------------------------------------------------------------------
+"""
+CHESSYY AI Microservice (FastAPI Server)
+
+This server runs the Python backend services on internal port 8000:
+1. Health check (/api/health): Verifies Stockfish engine and Gemini API availability.
+2. Game analysis (/api/analyze-game): Evaluates PGN moves with Stockfish and attaches Gemini coaching explanations.
+3. Match debrief (/api/match-debrief): Creates a high-level Grandmaster story and personalized training tips.
+4. Interactive coach (/api/ask-coach): Answers student questions about specific moves or positions.
+"""
 
 import io
 import os
 import sys
 from contextlib import asynccontextmanager
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 from pathlib import Path
 
 # Add this ai_service directory to Python's import search path
@@ -30,7 +27,11 @@ import chess.pgn
 
 from engine_manager import engine_manager
 from analyzer import analyze_game as run_engine_analysis
-from coach import generate_coach_review
+from coach import (
+    generate_coach_review,
+    generate_match_debrief,
+    answer_coach_question,
+)
 
 # Load environment variables (.env files) from ai_service/ and project root
 load_dotenv(Path(__file__).resolve().parent / ".env")
@@ -40,9 +41,9 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Runs automatically when the server boots up.
-    Checks whether the Stockfish engine file is found so you see a clear warning
-    in logs immediately if something is missing.
+    Startup & shutdown lifecycle handler:
+    Runs automatically when the FastAPI server starts up.
+    Verifies that the Stockfish engine executable is available on the machine.
     """
     if not engine_manager.is_available():
         print("[WARNING] Stockfish binary was not located. Engine analysis will be disabled.")
@@ -58,7 +59,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS setup: Restrict origins to authorized Node.js/frontend ports
+# CORS setup: Restrict origins to authorized Node.js server and Vite client ports
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
 if allowed_origins_env:
     allowed_origins = [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
@@ -83,42 +84,43 @@ app.add_middleware(
 
 # -------------------------------------------------------------------------
 # Data Models (Pydantic Schemas)
-# These define and validate the exact shape of incoming and outgoing JSON data.
+# Validates the exact structure and types of incoming and outgoing JSON data.
 # -------------------------------------------------------------------------
 
 class HealthResponse(BaseModel):
+    # Status report returned by the /api/health endpoint
     status: str
     engine: str
     gemini_configured: bool
 
 
 class AnalyzeGameRequest(BaseModel):
-    # What Node.js sends us to analyze (strictly validated):
+    # Request payload received from Node.js:
     gameId: str = Field(..., max_length=100, pattern=r"^[a-zA-Z0-9_\-\.]{1,100}$", description="Unique match identifier")
     pgn: str = Field(..., max_length=30000, description="Full chess game text in standard PGN format")
-    includeCoach: bool = Field(default=True, description="True if we should ask Gemini for coaching tips")
+    includeCoach: bool = Field(default=False, description="Whether to include Gemini AI coaching explanations")
 
 
 class MoveAnalysis(BaseModel):
-    # Stockfish results for a single move (ply = half-move):
+    # Evaluation metrics for a single half-move (ply):
     ply: int
     color: str
-    san: str                   # e.g. 'Nf3' or 'e4'
-    eval: float                # Score in pawns (+1.5 = White is ahead by 1.5 pawns)
-    bestMove: str              # What Stockfish thinks was the best move
-    badge: str                 # Badge label: BRILLIANT, BEST, BLUNDER, etc.
+    san: str                   # Standard algebraic notation (e.g. 'Nf3', 'e4')
+    eval: float                # Position score in pawns (+1.5 = White is ahead by 1.5 pawns)
+    bestMove: str              # Optimal move recommended by Stockfish
+    badge: str                 # Move badge: BOOK, BRILLIANT, BEST, EXCELLENT, GOOD, INACCURACY, MISTAKE, BLUNDER
     isTurningPoint: bool       # True if the move swung the winning odds significantly
-    coachExplanation: Optional[str] = None  # Friendly 1-2 sentence tip from Gemini
+    coachExplanation: Optional[str] = None  # Concise coaching advice from Gemini
 
 
 class CoachSummary(BaseModel):
-    # Overall summary tips for both players
+    # General strategic tips for both players
     whiteTip: Optional[str] = None
     blackTip: Optional[str] = None
 
 
 class AnalyzeGameResponse(BaseModel):
-    # Full response package returned to Node.js
+    # Complete match analysis package returned to Node.js
     gameId: str
     whiteAccuracy: float
     blackAccuracy: float
@@ -134,9 +136,9 @@ class AnalyzeGameResponse(BaseModel):
 @app.get("/api/health", response_model=HealthResponse)
 def health_check():
     """
-    Checks if the AI service is ready:
-    - Returns 200 OK if Stockfish engine is found and working.
-    - Returns 503 error if Stockfish is missing.
+    Service health check:
+    - Returns 200 OK with engine and Gemini status if Stockfish is available.
+    - Returns 503 Service Unavailable if Stockfish is missing or cannot be executed.
     """
     if not engine_manager.is_available():
         raise HTTPException(
@@ -156,12 +158,12 @@ def health_check():
 @app.post("/api/analyze-game", response_model=AnalyzeGameResponse)
 def analyze_game(request: AnalyzeGameRequest):
     """
-    Main analysis pipeline:
-    1. Validates that PGN match text is not empty.
-    2. Runs Stockfish engine on every move (search depth 12).
-    3. Computes accuracy % and move badges (Blunder, Best, Brilliant).
-    4. Optionally asks Gemini AI for friendly tactical coaching explanations.
-    5. Returns complete report to Node.js.
+    Full game analysis endpoint:
+    1. Validates incoming PGN match text.
+    2. Runs Stockfish evaluation across all moves at search depth 12.
+    3. Calculates player accuracies, move badges, and evaluation graph.
+    4. Optionally requests Gemini AI tactical explanations for turning points.
+    5. Returns the complete analysis object to Node.js.
     """
     # 1. Reject empty requests
     if not request.pgn or not request.pgn.strip():
@@ -170,14 +172,14 @@ def analyze_game(request: AnalyzeGameRequest):
             detail={"error": "INVALID_PGN", "detail": "PGN string cannot be empty."}
         )
 
-    # 2. Ensure Stockfish is ready
+    # 2. Verify Stockfish engine readiness
     if not engine_manager.is_available():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"error": "ENGINE_UNAVAILABLE", "detail": "Stockfish binary was not found or failed to start."}
         )
 
-    # 3. Run Stockfish calculations across all moves
+    # 3. Execute Stockfish engine calculations
     try:
         analysis_data = run_engine_analysis(request.pgn.strip(), depth=12)
     except ValueError as ve:
@@ -192,7 +194,7 @@ def analyze_game(request: AnalyzeGameRequest):
             detail={"error": "ANALYSIS_FAILED", "detail": "An internal error occurred during game evaluation."}
         )
 
-    # 4. If requested, generate coaching tips with Google Gemini
+    # 4. Generate coaching explanations with Google Gemini if requested
     coach_summary_obj = None
     if request.includeCoach:
         try:
@@ -202,7 +204,7 @@ def analyze_game(request: AnalyzeGameRequest):
                 white_acc=analysis_data["whiteAccuracy"],
                 black_acc=analysis_data["blackAccuracy"]
             )
-            # Attach Gemini's explanations to specific blunder moves
+            # Map Gemini explanations to their corresponding blunder moves
             tp_explanations = coach_data.get("turningPoints", {})
             for m in analysis_data["moves"]:
                 ply_str = str(m["ply"])
@@ -215,14 +217,14 @@ def analyze_game(request: AnalyzeGameRequest):
                 blackTip=summary_dict.get("blackTip")
             )
         except Exception as ce:
-            # If Gemini fails, provide simple fallback tips so user still gets advice
+            # Fall back gracefully so the review still delivers tips even if Gemini fails
             print(f"[AI Service] Coach review generation error: {ce}")
             coach_summary_obj = CoachSummary(
                 whiteTip="Focus on opening development and central control.",
                 blackTip="Guard weak squares and defend against early queen attacks."
             )
 
-    # 5. Format and return clean response
+    # 5. Format and return structured response
     moves_output = [MoveAnalysis(**m) for m in analysis_data["moves"]]
 
     return AnalyzeGameResponse(
@@ -235,7 +237,92 @@ def analyze_game(request: AnalyzeGameRequest):
     )
 
 
-# Allows running this microservice directly during local development
+# Schema for match debrief request
+class MatchDebriefRequest(BaseModel):
+    # Player handles or usernames
+    whiteHandle: str = "White"
+    blackHandle: str = "Black"
+    # Overall match accuracies calculated by Stockfish
+    whiteAccuracy: Optional[Union[float, str]] = 80.0
+    blackAccuracy: Optional[Union[float, str]] = 80.0
+    # Opening name played in the match (e.g. 'Italian Game', 'Scholar Mate')
+    opening: str = "standard opening"
+    # Top turning points (blunders and mistakes, max 4)
+    turningPoints: List[dict] = []
+
+
+# Schema for match debrief response
+class MatchDebriefResponse(BaseModel):
+    # 2-3 sentence engaging game narrative summarizing how the match was decided
+    gameNarrative: str
+    # One actionable training tip for White
+    whiteTip: str
+    # One actionable training tip for Black
+    blackTip: str
+
+
+# Schema for on-demand "Ask Coach Why" question request
+class AskCoachRequest(BaseModel):
+    # Board position text in standard FEN notation
+    fen: str
+    # The actual move played in the game (e.g. 'Nf6')
+    playedMove: str
+    # The best move suggested by Stockfish (e.g. 'g6')
+    bestMove: str
+    # Engine follow-up moves (principal variation line)
+    enginePv: List[str] = []
+    # Question asked by the student (or selected quick-question chip)
+    userQuestion: str = "Why is this move a mistake?"
+
+
+# Schema for "Ask Coach Why" answer response
+class AskCoachResponse(BaseModel):
+    # Instructive, humanized explanation from the Grandmaster coach
+    answer: str
+
+
+@app.post("/api/match-debrief", response_model=MatchDebriefResponse)
+def match_debrief(request: MatchDebriefRequest):
+    """
+    Match Debrief endpoint:
+    Called during match review to generate a concise game narrative and personalized training tips.
+    Fast, single-call AI pipeline with automatic rule-based fallback.
+    """
+    try:
+        # Request debrief from coach module via Gemini AI
+        result = generate_match_debrief(request.model_dump())
+        return MatchDebriefResponse(**result)
+    except Exception as e:
+        # Fallback narrative if AI service encounters an unexpected issue
+        print(f"[AI Service] Match debrief error: {e}")
+        return MatchDebriefResponse(
+            gameNarrative="Both players contested the board with fighting tactical spirit.",
+            whiteTip="Maintain active development and keep king safety secured.",
+            blackTip="Look for active counter-play and central piece control."
+        )
+
+
+@app.post("/api/ask-coach", response_model=AskCoachResponse)
+def ask_coach(request: AskCoachRequest):
+    """
+    Interactive Ask Coach endpoint:
+    Triggered when a user clicks 'Ask Coach Why' for a specific move.
+    Provides a quick, simple 2-3 sentence explanation of the tactical nuance.
+    """
+    try:
+        # Request specific move explanation from coach module
+        result = answer_coach_question(request.model_dump())
+        return AskCoachResponse(**result)
+    except Exception as e:
+        # Fallback answer explaining the move difference simply
+        print(f"[AI Service] Ask coach error: {e}")
+        return AskCoachResponse(
+            answer=f"Stockfish prefers {request.bestMove} over {request.playedMove} to keep position balance and dynamic play."
+        )
+
+
+# Allows running this service directly with python main.py during local development
 if __name__ == "__main__":
     import uvicorn
+    # Start ASGI web server listening on localhost port 8000
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

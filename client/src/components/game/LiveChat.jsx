@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 
+// In-game live chat panel with quick reaction buttons
 function LiveChat({ messages = [], onSendMessage }) {
   const [inputText, setInputText] = useState('');
   const scrollContainerRef = useRef(null);
   const isInitialMount = useRef(true);
 
+  // Auto-scroll chat feed to the newest message without jumping the whole browser window
   useEffect(() => {
-    // Prevent initial mount from scrolling parent window
     if (isInitialMount.current) {
       isInitialMount.current = false;
       if (scrollContainerRef.current) {
@@ -20,6 +21,7 @@ function LiveChat({ messages = [], onSendMessage }) {
     }
   }, [messages]);
 
+  // Send message on form submit
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!inputText.trim()) return;
@@ -27,6 +29,7 @@ function LiveChat({ messages = [], onSendMessage }) {
     setInputText('');
   };
 
+  // Send quick reaction message (e.g., GL, GG)
   const handleCanned = (msg) => {
     onSendMessage(msg);
   };
@@ -98,3 +101,4 @@ function LiveChat({ messages = [], onSendMessage }) {
 }
 
 export default React.memo(LiveChat);
+

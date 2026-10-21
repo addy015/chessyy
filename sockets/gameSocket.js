@@ -1,21 +1,14 @@
-// What this file does:
-// This is the real-time multiplayer backend.
-// It uses Socket.io and chess.js to connect two players and manage their live match.
-// 
-// Main jobs:
-// 1. Matchmaking: Isolated queues per time control (no cross-matching between 3m and 10m).
-// 2. Private Rooms: Host selects time control; guest joins that exact game.
-// 3. Chess Clocks: Server-authoritative countdown, move time deduction, increment addition, flag-fall.
-// 4. Referee: Server validates every move and pawn underpromotions using chess.js.
-// 5. Ephemeral Chat: Relays live in-game messages between the two players (stored in RAM only).
-// 6. Game Over: Detects checkmate, draw, stalemate, resignation, or timeout.
-// 7. Cleanup: Removes match from memory when players disconnect.
-// -------------------------------------------------------------------------
+// Real-time multiplayer chess engine:
+// 1. Matchmaking: Pairs players by matching time controls (1m, 3m, 5m, 10m, unlimited).
+// 2. Private Rooms: Host creates a room code and friend joins with that code.
+// 3. Clocks: Runs server-side timers with time deductions and increments per move.
+// 4. Move Referee: Validates every move with chess.js before broadcasting.
+// 5. Chat & Reconnect: Live chat messages and 30-second reconnection window on disconnect.
 
 const { Chess } = require('chess.js');
 const crypto = require('crypto');
 
-// Rate limiter helper per socket connection (Fail-closed design)
+// Rate limiter per socket to prevent spamming moves, chat, or matchmaking requests
 function checkSocketRateLimit(socket, action, maxRequests, windowMs) {
     try {
         if (!socket || !socket._rateLimits) {
@@ -34,11 +27,11 @@ function checkSocketRateLimit(socket, action, maxRequests, windowMs) {
         limiter.count += 1;
         return true;
     } catch (e) {
-        return false; // Fail closed on error
+        return false;
     }
 }
 
-// Constant-time token comparison against timing attacksw
+// Compare secret reconnect tokens safely without timing leaks
 function safeTokenCompare(knownToken, candidateToken) {
     if (typeof knownToken !== 'string' || typeof candidateToken !== 'string') return false;
     const bufA = Buffer.from(knownToken, 'utf-8');
@@ -47,6 +40,7 @@ function safeTokenCompare(knownToken, candidateToken) {
     return crypto.timingSafeEqual(bufA, bufB);
 }
 
+// Time control options with initial minutes and increment seconds
 const TIME_PRESETS = {
     'bullet_1_0':  { id: 'bullet_1_0',  label: '1 min',      initialMs: 60 * 1000,       incMs: 0 },
     'blitz_3_0':   { id: 'blitz_3_0',   label: '3 min',      initialMs: 3 * 60 * 1000,   incMs: 0 },
@@ -57,12 +51,13 @@ const TIME_PRESETS = {
 };
 const DEFAULT_TIME_PRESET = 'rapid_10_0';
 
-// Sanitize incoming player handles (max 10 chars, uppercase, alphanumeric whitelist)
+// Clean player username (up to 10 uppercase alphanumeric chars)
 function sanitizePlayerName(name) {
     if (!name || typeof name !== 'string') return 'ANONYMOUS';
     const cleaned = name.trim().slice(0, 10).toUpperCase();
     return /^[A-Z0-9_-]{2,10}$/.test(cleaned) ? cleaned : 'ANONYMOUS';
 }
+
 
 function initGameSocket(io) {
     // Stores active games in server memory (RAM): key = gameId, value = match data

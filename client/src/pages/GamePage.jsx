@@ -17,6 +17,7 @@ import { useSocket } from '../context/SocketContext';
 import { useSound } from '../context/SoundContext';
 import { useToast } from '../context/ToastContext';
 
+// Standard time control presets with initial clock and increment times in ms
 const TC_PRESETS = {
   bullet_1_0: { id: 'bullet_1_0', label: '1 MIN BULLET', initialMs: 60 * 1000, incMs: 0 },
   blitz_3_0: { id: 'blitz_3_0', label: '3 MIN BLITZ', initialMs: 3 * 60 * 1000, incMs: 0 },
@@ -42,12 +43,12 @@ export default function GamePage() {
     playLowTimeTickSound,
   } = useSound();
 
-  // Reset scroll to top on mount
+  // Scroll to top when game page loads
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
 
-  // URL Parameters
+  // Match parameters from query string (like: ?tc=blitz_3_0&room=ABCDEF&role=host)
   const tcParam = searchParams.get('tc') || 'rapid_10_0';
   const roomParam = searchParams.get('room') ? searchParams.get('room').trim().toUpperCase() : null;
   const roleParam = searchParams.get('role') ? searchParams.get('role').trim().toLowerCase() : null; // 'host' | 'guest'
@@ -55,11 +56,12 @@ export default function GamePage() {
   const tcConfig = TC_PRESETS[tcParam] || TC_PRESETS.rapid_10_0;
   const isTimedMatch = tcConfig.initialMs > 0;
 
-  // Chess Game State
+  // Local chess engine instance and board state
   const [chess] = useState(() => new Chess());
-  const [, setBoardRevision] = useState(0); // Forces re-render on chess state change
-  const [playerRole, setPlayerRole] = useState(null); // 'w' | 'b' | null
+  const [, setBoardRevision] = useState(0); // Counter to trigger re-renders after mutating chess engine
+  const [playerRole, setPlayerRole] = useState(null); // 'w', 'b', or null (Spectator)
 
+  // Match participant names and interaction states
   const [opponentHandle, setOpponentHandle] = useState('OPPONENT');
   const [matchPlayers, setMatchPlayers] = useState({ white: 'WHITE', black: 'BLACK' });
   const [selectedSquare, setSelectedSquare] = useState(null);
@@ -67,7 +69,7 @@ export default function GamePage() {
   const [lastMove, setLastMove] = useState(null);
   const [pendingPromotion, setPendingPromotion] = useState(null);
 
-  // Clocks
+  // Player clocks: stores remaining time in ms and tracks whose timer is active
   const [clocks, setClocks] = useState({
     isTimed: isTimedMatch,
     whiteMs: tcConfig.initialMs,
@@ -76,8 +78,9 @@ export default function GamePage() {
   });
   const lowTimeTickRef = useRef(0);
 
-  // Modals & Status
+  // Match status and popup modal controls
   const [isWaiting, setIsWaiting] = useState(() => {
+    // If active session token exists in sessionStorage, skip waiting modal
     try {
       const stored = sessionStorage.getItem('chessyy_active_game');
       if (stored) {
@@ -99,7 +102,7 @@ export default function GamePage() {
   const [chatMessages, setChatMessages] = useState([]);
   const [capturedPieces, setCapturedPieces] = useState({ white: [], black: [] });
 
-  // Grace period countdown ticker when opponent is disconnected
+  // 1-second interval ticker for opponent reconnection grace period
   useEffect(() => {
     if (reconnectGraceSeconds === null || reconnectGraceSeconds <= 0) return;
     const timer = setInterval(() => {
@@ -108,11 +111,12 @@ export default function GamePage() {
     return () => clearInterval(timer);
   }, [reconnectGraceSeconds]);
 
+  // Forces component re-render when chess engine state updates
   const triggerRender = useCallback(() => {
     setBoardRevision((v) => v + 1);
   }, []);
 
-  // Update captured pieces for HUD
+  // Tally missing pieces by comparing the board against the standard 16-piece set
   const updateCapturedPieces = useCallback(() => {
     const piecesOnBoard = { p: 0, r: 0, n: 0, b: 0, q: 0, P: 0, R: 0, N: 0, B: 0, Q: 0 };
     chess.board().forEach((row) => {
@@ -142,7 +146,8 @@ export default function GamePage() {
     setCapturedPieces({ white: capturedWhite, black: capturedBlack });
   }, [chess]);
 
-  // Audio trigger helper
+
+  // Selects appropriate sound effect based on move consequences (check, capture, castle, or promotion)
   const playSfxForMove = useCallback((moveResult, isSelf) => {
     if (!moveResult) return;
     const inCheck = typeof chess.inCheck === 'function' ? chess.inCheck() : (typeof chess.in_check === 'function' ? chess.in_check() : false);
@@ -163,7 +168,7 @@ export default function GamePage() {
     }
   }, [chess, playCheckSound, playCaptureSound, playCastleSound, playPromoteSound, playMoveSound]);
 
-  // Stable references for socket handlers to prevent ANY infinite re-render loops
+  // Keep latest state in refs so socket event listeners remain stable without rebinding
   const myHandleRef = useRef(myHandle);
   const matchPlayersRef = useRef(matchPlayers);
   const playerRoleRef = useRef(playerRole);
@@ -185,13 +190,13 @@ export default function GamePage() {
   useEffect(() => { triggerRenderRef.current = triggerRender; }, [triggerRender]);
   useEffect(() => { updateCapturedPiecesRef.current = updateCapturedPieces; }, [updateCapturedPieces]);
 
-  // Socket Lifecycle & Matchmaking (Runs ONCE per socket connection session)
+  // Socket Lifecycle & Matchmaking: handles room joins, move replication, clocks, and chat
   useEffect(() => {
     if (!socket || !isConnected) return;
 
     const safeHandle = (myHandleRef.current || 'ANONYMOUS').toUpperCase().substring(0, 10);
 
-    // Helper: Standard queue/room join
+    // Join random queue or private room based on URL params
     const joinStandardMatch = () => {
       if (roomParam && roleParam === 'host') {
         socket.emit('hostPrivateRoom', {
@@ -212,7 +217,7 @@ export default function GamePage() {
       }
     };
 
-    //Check for existing active session in sessionStorage (from refresh or network drop)
+    // Check for existing session token in sessionStorage to recover from page reload
     let activeSession = null;
     try {
       const stored = sessionStorage.getItem('chessyy_active_game');
@@ -231,12 +236,12 @@ export default function GamePage() {
       joinStandardMatch();
     }
 
-    // Waiting for opponent in random queue
+    // Queue waiting indicator
     const handleWaitingForOpponent = () => {
       setIsWaiting(true);
     };
 
-    // Private Room Creation Acknowledged
+    // Private room created on server
     const handlePrivateCreated = (data) => {
       setPrivateRoomInfo({
         isPrivate: true,
@@ -246,19 +251,19 @@ export default function GamePage() {
       setIsWaiting(true);
     };
 
-    // Private Room Expired
+    // Room code timed out
     const handlePrivateExpired = (data) => {
       showToastRef.current(data.message || 'Room code expired.');
       navigateRef.current('/');
     };
 
-    //Room Error
+    // Room join failed
     const handlePrivateError = (data) => {
       showToastRef.current(data.message || 'Room connection failed.');
       navigateRef.current('/');
     };
 
-    // Match Started (emitted to both players)
+    // Match initiated: reset board state, clocks, and prepare arena
     const handleStartGame = (data) => {
       setIsWaiting(false);
       setReconnectGraceSeconds(null);
@@ -329,11 +334,15 @@ export default function GamePage() {
         black: role === 'b' ? selfName : oppName,
       };
       setMatchPlayers(roster);
+      try {
+        sessionStorage.setItem('chessyy_review_role', role);
+        sessionStorage.setItem('chessyy_review_players', JSON.stringify(roster));
+      } catch {}
       setIsWaiting(false);
       showToastRef.current(`Match started! You are ${role === 'w' ? 'WHITE' : 'BLACK'}.`);
     };
 
-    // Initial Board State Sync
+    // Load initial board state if game has no prior history
     const handleBoardState = (fen) => {
       if (chessRef.current.history().length === 0) {
         chessRef.current.load(fen);
@@ -342,7 +351,7 @@ export default function GamePage() {
       }
     };
 
-    // Reconnected to Existing Live Game Snapshot
+    // Reconstruct full game state when rejoining after a disconnect or page refresh
     const handleGameReconnected = (data) => {
       console.log('[Socket] Reconnected to match successfully:', data.gameId);
       setIsWaiting(false);
@@ -355,7 +364,7 @@ export default function GamePage() {
       const oppName = role === 'w' ? roster.black : roster.white;
       setOpponentHandle(oppName);
 
-      // Restore complete chess state and move history (do NOT reset with chess.load(fen))
+      // Restore moves from PGN or history replay (avoids wiping move ledger with load(fen))
       let loaded = false;
       if (data.pgn && data.pgn.trim()) {
         try {
@@ -384,7 +393,7 @@ export default function GamePage() {
         chessRef.current.load(data.fen);
       }
 
-      // Restore last move indicator
+      // Re-highlight the last executed move on the board
       if (data.lastMove && data.lastMove.from && data.lastMove.to) {
         setLastMove(data.lastMove);
       } else {
@@ -397,6 +406,7 @@ export default function GamePage() {
         }
       }
 
+      // Sync remaining clock times
       if (data.clocks) {
         setClocks({
           isTimed: Boolean(data.clocks.isTimed),
@@ -406,6 +416,7 @@ export default function GamePage() {
         });
       }
 
+      // Rehydrate chat message history
       if (Array.isArray(data.chat)) {
         setChatMessages(
           data.chat.map((c) => ({
@@ -429,7 +440,7 @@ export default function GamePage() {
       showToastRef.current('Reconnected to live match!');
     };
 
-    // Reconnect Failed (Game ended or token expired)
+    // Session expired or match ended while disconnected
     const handleReconnectFailed = (err) => {
       console.log('[Socket] Reconnect failed:', err?.message);
       try {
@@ -440,32 +451,32 @@ export default function GamePage() {
       joinStandardMatch();
     };
 
-    // Opponent Disconnected Grace Window
+    // Start 30s countdown waiting for disconnected opponent to return
     const handleOpponentDisconnectedGrace = (data) => {
       const sec = data?.graceSeconds || 30;
       setReconnectGraceSeconds(sec);
       showToastRef.current(`Opponent disconnected! Waiting up to ${sec}s for reconnection...`);
     };
 
-    // Opponent Reconnected
+    // Opponent successfully reconnected
     const handleOpponentReconnected = (data) => {
       setReconnectGraceSeconds(null);
       showToastRef.current(`Opponent (${data?.name || 'Opponent'}) reconnected! Resuming match.`);
     };
 
-    // Opponent Left Finished Room
+    // Opponent exited post-game lobby
     const handleOpponentLeftRoom = () => {
       setReconnectGraceSeconds(null);
       showToastRef.current('Opponent left the room.');
     };
 
-    // Verified Move from Server
+    // Incoming move verified by server
     const handleMove = (move) => {
       try {
         const historyVerbose = chessRef.current.history({ verbose: true });
         const lastApplied = historyVerbose.length > 0 ? historyVerbose[historyVerbose.length - 1] : null;
 
-        // Skip if move was already executed locally (optimistic move echo)
+        // Skip if this client already applied the move optimistically
         if (
           lastApplied &&
           lastApplied.from === move.from &&
@@ -491,13 +502,13 @@ export default function GamePage() {
       }
     };
 
-    // Invalid Move Alert
+    // Illegal move rejected by server validation
     const handleInvalidMove = () => {
       showToastRef.current('Invalid move according to standard FIDE rules.');
       triggerRenderRef.current();
     };
 
-    // Clock Synchronization
+    // Clock sync from server
     const handleClockSync = (data) => {
       setClocks({
         isTimed: data.activeTurn !== null,
@@ -507,9 +518,10 @@ export default function GamePage() {
       });
     };
 
-    // In-game Chat Message Received
+    // Incoming chat message from opponent
     const handleReceiveChatMessage = (chatEntry) => {
       setChatMessages((prev) => {
+        // Prevent duplicate messages if already rendered
         if (chatEntry.clientMsgId && prev.some((m) => m.id === chatEntry.clientMsgId)) {
           return prev;
         }
@@ -527,22 +539,24 @@ export default function GamePage() {
       });
     };
 
-    // Draw / Rematch Proposals
+    // Draw offer received from opponent
     const handleOpponentRequestedEndGame = () => {
       setIsDrawOfferOpen(true);
     };
 
+    // Opponent rejected draw offer
     const handleEndGameDeclined = () => {
       showToastRef.current('Opponent declined the draw offer.');
     };
 
-    // Game Concluded
+    // Match concluded: clean active session and cache PGN for Review page
     const handleGameOver = (data) => {
       try {
         sessionStorage.removeItem('chessyy_active_game');
       } catch {}
       setReconnectGraceSeconds(null);
       setIsGameOver(true);
+      setIsWaiting(false);
       setClocks((prev) => ({ ...prev, activeTurn: null }));
       playGameOverSoundRef.current();
 
@@ -553,10 +567,16 @@ export default function GamePage() {
       setGameOverReason(reason);
 
       try {
-        sessionStorage.setItem('chessyy_review_pgn', finalPgn);
+        if (finalPgn && finalPgn.trim()) {
+          sessionStorage.setItem('chessyy_review_pgn', finalPgn);
+        }
         sessionStorage.setItem('chessyy_review_players', JSON.stringify(playersRoster));
+        if (playerRoleRef.current) {
+          sessionStorage.setItem('chessyy_review_role', playerRoleRef.current);
+        }
       } catch {}
     };
+
 
     const handleOpponentDisconnect = () => {
       showToastRef.current('Opponent disconnected from the match.');
@@ -613,7 +633,7 @@ export default function GamePage() {
     tcParam,
   ]); // ZERO dynamic state in dependencies! Rock solid socket lifecycle!
 
-  // Local Clock Ticker (runs every 100ms for zero-drift sub-second display)
+  // Local clock ticker: decrements active player's clock every 100ms and sounds low-time tick under 10s
   useEffect(() => {
     if (!clocks.activeTurn || isGameOver || isWaiting || !clocks.isTimed) return;
 
@@ -623,7 +643,7 @@ export default function GamePage() {
         const key = prev.activeTurn === 'w' ? 'whiteMs' : 'blackMs';
         const updatedMs = Math.max(0, prev[key] - 100);
 
-        // Low time tick audio
+        // Low time tick audio warning when 10 seconds or less remain
         if (updatedMs <= 10000 && updatedMs > 0) {
           const nowSec = Math.floor(updatedMs / 1000);
           if (lowTimeTickRef.current !== nowSec) {
@@ -639,12 +659,12 @@ export default function GamePage() {
     return () => clearInterval(interval);
   }, [clocks.activeTurn, clocks.isTimed, isGameOver, isWaiting, playLowTimeTickSound]);
 
-  // Click square handler
+  // Handle board square interaction: select piece, calculate legal destinations, or make move
   const handleSquareClick = (rowIndex, colIndex, squareName, pieceOnSquare) => {
     if (isGameOver || isWaiting || !playerRole) return;
-    if (chess.turn() !== playerRole) return; // Not your turn!
+    if (chess.turn() !== playerRole) return; // Prevent moving out of turn
 
-    // If no piece is currently selected:
+    // Step 1: No piece selected yet -> select piece if it matches player color
     if (!selectedSquare) {
       if (pieceOnSquare && pieceOnSquare.color === playerRole) {
         const moves = chess.moves({ square: squareName, verbose: true });
@@ -654,10 +674,10 @@ export default function GamePage() {
       return;
     }
 
-    // If clicking another piece of player's own color: switch selection
+    // Step 2: Clicking another piece of own color -> switch or toggle selection
     if (pieceOnSquare && pieceOnSquare.color === playerRole) {
       if (selectedSquare.squareName === squareName) {
-        // Deselect
+        // Deselect when clicking same square
         setSelectedSquare(null);
         setPossibleMoves([]);
       } else {
@@ -668,7 +688,7 @@ export default function GamePage() {
       return;
     }
 
-    // Clicking a destination square:
+    // Step 3: Validate if target square is in legal moves list
     const targetMove = possibleMoves.find((m) => m.to === squareName);
     if (!targetMove) {
       setSelectedSquare(null);
@@ -676,7 +696,7 @@ export default function GamePage() {
       return;
     }
 
-    // Check for Pawn Promotion (White moving to 8th rank or Black to 1st rank)
+    // Check for Pawn Promotion (moving to the opponent's back rank)
     const isPawn = selectedSquare && chess.get(selectedSquare.squareName)?.type === 'p';
     const isPromotionRank =
       (playerRole === 'w' && squareName.endsWith('8')) ||
@@ -725,6 +745,7 @@ export default function GamePage() {
     }
   };
 
+  // Match control actions
   const handleOfferDraw = () => {
     socket?.emit('requestEndGame');
     showToast('Draw offer sent to opponent.');
@@ -744,6 +765,7 @@ export default function GamePage() {
     socket?.emit('respondEndGame', false);
   };
 
+  // Send in-game chat message
   const handleSendMessage = useCallback((text) => {
     if (!text || !text.trim()) return;
     const trimmed = text.trim().slice(0, 200);
@@ -767,6 +789,7 @@ export default function GamePage() {
     socket?.emit('sendChatMessage', { message: trimmed, clientMsgId });
   }, [socket]);
 
+  // Restart match from beginning
   const handlePlayAgain = () => {
     try {
       sessionStorage.removeItem('chessyy_active_game');
@@ -775,7 +798,26 @@ export default function GamePage() {
     navigate(0); // Refresh match screen
   };
 
-  // Status ticker text calculation
+  // Save current match PGN and open Review Match page
+  const handleReviewMatch = useCallback(() => {
+    try {
+      if (chessRef.current) {
+        const currentPgn = chessRef.current.pgn();
+        if (currentPgn && currentPgn.trim()) {
+          sessionStorage.setItem('chessyy_review_pgn', currentPgn);
+        }
+      }
+      sessionStorage.setItem('chessyy_review_players', JSON.stringify(matchPlayersRef.current));
+      if (playerRoleRef.current) {
+        sessionStorage.setItem('chessyy_review_role', playerRoleRef.current);
+      }
+    } catch (e) {
+      console.warn('[GamePage] Error saving review state:', e);
+    }
+    navigate('/review');
+  }, [navigate]);
+
+  // Status ticker text calculation: turn notice, check/checkmate badges, and game phase
   const matchStatus = useMemo(() => {
     if (isWaiting) {
       if (roomParam) {
@@ -814,6 +856,7 @@ export default function GamePage() {
       statusText += ' • CHECK!';
     }
 
+    // Determine phase based on move depth
     const moveCount = chess.history().length;
     let phase = 'OPENING';
     if (moveCount > 30) {
@@ -824,6 +867,7 @@ export default function GamePage() {
 
     return { text: statusText, phase };
   }, [isWaiting, roomParam, playerRole, chess, reconnectGraceSeconds]);
+
 
   // Player color orientation
   const localColor = playerRole === 'b' ? 'b' : 'w';
@@ -886,7 +930,7 @@ export default function GamePage() {
         {/* Column 3: Controls Panel & Live Chat */}
         <aside className="controls-panel">
           <div className="panel-header">
-            <span className="panel-title">02 / DISPATCH &amp; CHAT</span>
+            <span className="panel-title">LIVE CHAT</span>
             <SoundToggleButton />
           </div>
 
@@ -899,7 +943,7 @@ export default function GamePage() {
               disabled={isGameOver || isWaiting}
               onClick={handleOfferDraw}
             >
-              OFFER DRAW / RESET &rarr;
+              OFFER DRAW &rarr;
             </button>
             <button
               type="button"
@@ -942,6 +986,7 @@ export default function GamePage() {
         isOpen={isGameOver}
         reason={gameOverReason}
         onPlayAgain={handlePlayAgain}
+        onReview={handleReviewMatch}
       />
 
       <Footer />

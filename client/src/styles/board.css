@@ -176,7 +176,7 @@
   background: var(--square-light);
 }
 
-.flipped {
+.chessboard.flipped {
   transform: rotate(180deg);
 }
 

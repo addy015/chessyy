@@ -1,6 +1,6 @@
-import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useUser } from '../../context/UserContext';
+import ChessyyLogo from './ChessyyLogo';
 
 export default function Masthead() {
   const { handle, openEditModal } = useUser();
@@ -10,9 +10,14 @@ export default function Masthead() {
   return (
     <header className="editorial-masthead">
       <div className="editorial-masthead-inner">
-        {/* Logo and brand link */}
+        {/* Title */}
         <Link to="/" className="brand-mark">
           <span>CHESSYY</span>
+        </Link>
+
+        {/* Brand Logo */}
+        <Link to="/" className="masthead-center-logo" title="Ghoda Respectable" aria-label="Chessyy Home">
+          <ChessyyLogo size={32} />
         </Link>
 
         {/* Player Identity Badge */}

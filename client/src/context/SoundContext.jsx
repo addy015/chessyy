@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState } from 'react';
 import {
   isMuted as checkIsMuted,
   toggleMute as toggleSoundMute,
@@ -14,8 +14,10 @@ import {
 const SoundContext = createContext();
 
 export function SoundProvider({ children }) {
+  // Sync initial mute state with audio engine preference
   const [muted, setMuted] = useState(checkIsMuted);
 
+  // Toggle mute state and update local state
   const toggle = () => {
     const next = toggleSoundMute();
     setMuted(next);
@@ -41,6 +43,7 @@ export function SoundProvider({ children }) {
   );
 }
 
+// Hook to play sounds and access mute controls anywhere in the app
 export function useSound() {
   const context = useContext(SoundContext);
   if (!context) {
@@ -48,3 +51,4 @@ export function useSound() {
   }
   return context;
 }
+

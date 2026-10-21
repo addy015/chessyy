@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 
+// Navigation bar with buttons and keyboard arrow hotkeys to step through moves
 export default function StepperControls({
   currentPly,
   maxPly,
@@ -7,8 +8,8 @@ export default function StepperControls({
   onPrev,
   onNext,
   onLast,
-  onFlip,
 }) {
+  // Bind left and right arrow keys for quick move stepping
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'ArrowLeft') {
@@ -24,7 +25,9 @@ export default function StepperControls({
 
   return (
     <div className="review-stepper-bar">
+      {/* Stepper action buttons */}
       <div className="stepper-buttons">
+        {/* Jump to start */}
         <button
           id="btn-first"
           className="btn-step"
@@ -34,6 +37,8 @@ export default function StepperControls({
         >
           |&lt;&lt;
         </button>
+
+        {/* Previous move */}
         <button
           id="btn-prev"
           className="btn-step"
@@ -43,6 +48,8 @@ export default function StepperControls({
         >
           &lt;
         </button>
+
+        {/* Next move */}
         <button
           id="btn-next"
           className="btn-step"
@@ -52,6 +59,8 @@ export default function StepperControls({
         >
           &gt;
         </button>
+
+        {/* Jump to end */}
         <button
           id="btn-last"
           className="btn-step"
@@ -61,16 +70,9 @@ export default function StepperControls({
         >
           &gt;&gt;|
         </button>
-        <button
-          id="btn-flip"
-          className="btn-step"
-          title="Flip board perspective"
-          onClick={onFlip}
-        >
-          FLIP
-        </button>
       </div>
 
+      {/* Keyboard hotkey hint */}
       <div className="stepper-hotkeys-hint">
         KEYBOARD: [ &larr; / &rarr; ] NAVIGATE
       </div>

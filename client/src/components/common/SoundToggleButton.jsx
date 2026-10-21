@@ -1,11 +1,12 @@
-import React from 'react';
 import { useSound } from '../../context/SoundContext';
 import { useToast } from '../../context/ToastContext';
 
-export default function SoundToggleButton({ className = '' }) {
+// Button to mute or unmute game sound effects
+export default function SoundToggleButton({ className = '', id = 'sound-toggle-btn' }) {
   const { muted, toggleMute } = useSound();
   const { showToast } = useToast();
 
+  // Toggle audio engine mute state and show confirmation toast
   const handleToggle = () => {
     const isNowMuted = toggleMute();
     showToast(isNowMuted ? 'Sound muted.' : 'Sound enabled.');
@@ -14,13 +15,14 @@ export default function SoundToggleButton({ className = '' }) {
   return (
     <button
       type="button"
-      id="sound-toggle-btn"
+      id={id}
       className={`btn-sound-toggle ${muted ? 'muted' : ''} ${className}`}
-      title="Toggle Sound"
+      title={muted ? 'Unmute Sound' : 'Mute Sound'}
       onClick={handleToggle}
     >
-      <span id="sound-toggle-icon">{muted ? '🔇' : '🔊'}</span>
-      <span id="sound-toggle-label">{muted ? 'MUTED' : 'SFX'}</span>
+      <span id={`${id}-icon`}>{muted ? '🔇' : '🔊'}</span>
+      <span id={`${id}-label`}>{muted ? 'MUTED' : 'SFX'}</span>
     </button>
   );
 }
+

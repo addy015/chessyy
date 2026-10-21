@@ -4,7 +4,7 @@
   "description": "CHESSYY - Precision Real-time Chess Arena & Post-Match AI Engine Review",
   "main": "app.js",
   "scripts": {
-    "dev": "node --watch app.js",
+    "dev": "node --watch --watch-path=app.js --watch-path=routes --watch-path=sockets app.js",
     "dev:client": "npm --prefix client run dev",
     "build:client": "npm --prefix client run build",
     "ai": ".\\ai_service\\.venv\\Scripts\\python.exe -m uvicorn main:app --app-dir ai_service --host 127.0.0.1 --port 8000 --reload",

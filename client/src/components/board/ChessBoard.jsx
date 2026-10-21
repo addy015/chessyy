@@ -1,6 +1,6 @@
-import React from 'react';
 import Square from './Square';
 
+// Renders the 8x8 chessboard grid
 export default function ChessBoard({
   chess,
   playerRole = 'w',
@@ -27,6 +27,7 @@ export default function ChessBoard({
     >
       {board.map((row, rowIndex) =>
         row.map((square, colIndex) => {
+          // Convert row and column indices into chess notation (e.g., e4, d5)
           const fileChar = String.fromCharCode(97 + colIndex);
           const rankNum = 8 - rowIndex;
           const squareName = `${fileChar}${rankNum}`;
@@ -36,6 +37,7 @@ export default function ChessBoard({
           const isLast = lastMove && (lastMove.from === squareName || lastMove.to === squareName);
           const isKingCheck = square && square.type === 'k' && inCheck && square.color === turn;
 
+          // Check if this square is a legal destination for the selected piece
           let moveMarker = null;
           const targetMove = possibleMoves.find((m) => m.to === squareName);
           if (targetMove) {

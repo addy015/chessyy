@@ -12,18 +12,21 @@ import './styles/editorial.css';
 import './styles/board.css';
 import './styles/home.css';
 import './styles/review.css';
+import './styles/puzzle.css';
 
+// Root component: wraps the app in routing and global providers
 export default function App() {
   return (
     <BrowserRouter>
+      {/* Global state providers: user handle, sound settings, and floating notifications */}
       <UserProvider>
         <SoundProvider>
           <ToastProvider>
             <Routes>
-              {/* Homepage: Static & fast (No WebSocket overhead) */}
+              {/* Homepage*/}
               <Route path="/" element={<HomePage />} />
 
-              {/* Game Arena: Real-time Socket.io active only when playing */}
+              {/* Game arena: SocketProvider connects only on the play screen */}
               <Route
                 path="/play"
                 element={
@@ -33,10 +36,10 @@ export default function App() {
                 }
               />
 
-              {/* Review Debrief: REST API evaluation (No WebSocket needed) */}
+              {/* Review Page */}
               <Route path="/review" element={<ReviewPage />} />
 
-              {/* Fallback */}
+              {/* Redirect unknown routes back to home */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </ToastProvider>

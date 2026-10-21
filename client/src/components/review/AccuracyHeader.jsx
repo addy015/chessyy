@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import SoundToggleButton from '../common/SoundToggleButton';
 
+// Top banner on review page showing both players' accuracy scores, PGN download, and navigation
 export default function AccuracyHeader({
   whiteHandle = 'WHITE',
   blackHandle = 'BLACK',
@@ -10,6 +11,7 @@ export default function AccuracyHeader({
 }) {
   return (
     <header className="review-header-card">
+      {/* Title & engine depth description */}
       <div>
         <div className="review-headline">03 / POST-MATCH EVALUATION &amp; ENGINE AUDIT</div>
         <div className="review-sub" id="match-meta-line">
@@ -57,7 +59,7 @@ export default function AccuracyHeader({
 
         {/* Play again link */}
         <Link to="/play" className="btn-step" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center' }}>
-          PLAY AGAIN &rarr;
+          PLAY AGAIN&nbsp;&#10227;
         </Link>
       </div>
     </header>

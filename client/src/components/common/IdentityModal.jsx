@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useUser } from '../../context/UserContext';
 import { useToast } from '../../context/ToastContext';
 
+// Modal dialog to change and save the player username
 export default function IdentityModal() {
   const { handle, updateHandle, isEditModalOpen, closeEditModal } = useUser();
   const { showToast } = useToast();
@@ -9,6 +10,7 @@ export default function IdentityModal() {
   const [errorMsg, setErrorMsg] = useState('');
   const inputRef = useRef(null);
 
+  // Sync input value with current handle and focus text box when modal opens
   useEffect(() => {
     if (isEditModalOpen) {
       setInputValue(handle);
@@ -19,6 +21,7 @@ export default function IdentityModal() {
 
   if (!isEditModalOpen) return null;
 
+  // Validate and save updated handle
   const handleSubmit = (e) => {
     e.preventDefault();
     const res = updateHandle(inputValue);
@@ -36,6 +39,7 @@ export default function IdentityModal() {
       id="name-modal"
       className="editorial-modal-backdrop"
       onClick={(e) => {
+        // Close modal when clicking outside the box
         if (e.target === e.currentTarget) closeEditModal();
       }}
     >
@@ -77,10 +81,10 @@ export default function IdentityModal() {
 
           <div className="modal-actions" style={{ marginTop: '18px', display: 'flex', gap: '10px' }}>
             <button type="button" className="btn-editorial" style={{ flex: 1, justifyContent: 'center' }} onClick={closeEditModal}>
-              CANCEL ✕
+              CANCEL
             </button>
             <button type="submit" className="btn-editorial btn-editorial-solid" style={{ flex: 1.4, justifyContent: 'center' }}>
-              SAVE &rarr;
+              SAVE
             </button>
           </div>
         </form>

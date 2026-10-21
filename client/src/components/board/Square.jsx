@@ -1,6 +1,6 @@
-import React from 'react';
 import Piece from './Piece';
 
+// Renders an individual board square with piece, coordinates, and move indicators
 export default function Square({
   squareName,
   rowIndex,
@@ -16,6 +16,7 @@ export default function Square({
   const fileChar = String.fromCharCode(97 + colIndex);
   const rankNum = 8 - rowIndex;
 
+  // Compute CSS classes for light/dark alternating colors and highlights
   let squareClasses = `square ${isLight ? 'light' : 'dark'}`;
   if (isSelected) squareClasses += ' selected';
   if (isLastMove) squareClasses += ' last-move';
@@ -42,11 +43,11 @@ export default function Square({
         <span className="square-coord file">{fileChar}</span>
       )}
 
-      {/* Legal Move Marker */}
+      {/* Legal move indicators: dot for empty square, ring for capture */}
       {moveMarker === 'normal' && <div className="available-move" />}
       {moveMarker === 'capture' && <div className="available-move-capture" />}
 
-      {/* Chess Piece */}
+      {/* Chess piece occupying this square */}
       {square && <Piece type={square.type} color={square.color} />}
     </div>
   );

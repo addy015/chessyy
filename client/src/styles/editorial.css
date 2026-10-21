@@ -69,6 +69,7 @@ html, body {
 }
 
 .editorial-masthead-inner {
+    position: relative;
     max-width: 1440px;
     margin: 0 auto;
     padding: 16px 24px;
@@ -89,6 +90,17 @@ html, body {
     display: flex;
     align-items: center;
     gap: 12px;
+}
+
+.masthead-center-logo {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
 }
 
 .brand-tag {
@@ -164,7 +176,7 @@ html, body {
 }
 
 .btn-editorial-solid:hover {
-    background: var(--vermilion);
+    /* background: var(--vermilion); */
     border-color: var(--vermilion);
     color: #FFFFFF;
 }

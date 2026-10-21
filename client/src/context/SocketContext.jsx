@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 
 const SocketContext = createContext();
@@ -23,11 +23,13 @@ export function SocketProvider({ children }) {
       setIsConnected(false);
     };
 
+    // Track connection lifecycle
     newSocket.on('connect', handleConnect);
     newSocket.on('disconnect', handleDisconnect);
 
     setSocket(newSocket);
 
+    // Clean up listeners and disconnect socket on unmount
     return () => {
       newSocket.off('connect', handleConnect);
       newSocket.off('disconnect', handleDisconnect);
@@ -42,6 +44,7 @@ export function SocketProvider({ children }) {
   );
 }
 
+// Hook to access global socket instance and connection status
 export function useSocket() {
   const context = useContext(SocketContext);
   if (!context) {
@@ -49,3 +52,4 @@ export function useSocket() {
   }
   return context;
 }
+

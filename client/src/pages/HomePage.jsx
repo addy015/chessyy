@@ -1,12 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Masthead from '../components/common/Masthead';
-import Footer from '../components/common/Footer';
 import IdentityModal from '../components/common/IdentityModal';
+import PuzzleWidget from '../components/game/PuzzleWidget';
 import { useUser } from '../context/UserContext';
 
-const SAMPLE_ACCENTS = [27, 28, 35, 36, 18, 45];
-
+// Generate random 6-character room code
 function generateRoomCode() {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
@@ -21,11 +20,11 @@ export default function HomePage() {
   const [searchParams] = useSearchParams();
   const { isEditModalOpen } = useUser();
 
+  // Match pace selection (defaults to 10 min rapid)
   const [selectedHomeTc, setSelectedHomeTc] = useState('rapid_10_0');
   const [selectedFriendTc, setSelectedFriendTc] = useState('rapid_10_0');
-  const [hoverCoord, setHoverCoord] = useState('');
 
-  // Friend modal state initialized from URL params if present
+  // Check for invite code in URL (e.g. ?join=CODE) and auto-open friend modal
   const inviteCode = searchParams.get('join')?.trim().toUpperCase() || '';
   const [isFriendModalOpen, setIsFriendModalOpen] = useState(Boolean(inviteCode));
   const [activeTab, setActiveTab] = useState(inviteCode ? 'join' : 'create');
@@ -48,11 +47,13 @@ export default function HomePage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isEditModalOpen, isFriendModalOpen, selectedHomeTc, navigate]);
 
+  // Host creates private room with selected pace and enters arena
   const handleGenerateRoom = () => {
     const roomCode = generateRoomCode();
     navigate(`/play?room=${encodeURIComponent(roomCode)}&role=host&tc=${encodeURIComponent(selectedFriendTc)}`);
   };
 
+  // Validate sanitized code and join friend's match as guest (Black)
   const handleJoinSubmit = (e) => {
     e.preventDefault();
     const sanitized = joinCode.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
@@ -170,37 +171,12 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Right Visual: 8x8 Abstract Matrix */}
+          {/* Right Visual: Interactive Tactical Puzzle Widget */}
           <div className="home-visual">
-            <div className="abstract-board-matrix" id="hero-matrix" title="64 SQUARES / ABSTRACT GEOMETRY">
-              {Array.from({ length: 8 }).map((_, r) =>
-                Array.from({ length: 8 }).map((_, c) => {
-                  const idx = r * 8 + c;
-                  const isShaded = (r + c) % 2 === 1;
-                  const isAccent = SAMPLE_ACCENTS.includes(idx);
-                  const coord = `${String.fromCharCode(97 + c)}${8 - r}`;
-
-                  return (
-                    <div
-                      key={idx}
-                      className={`matrix-cell ${isShaded ? 'shaded' : ''} ${isAccent ? 'active-accent' : ''}`}
-                      data-coord={coord}
-                      onMouseEnter={() => setHoverCoord(coord.toUpperCase())}
-                      onMouseLeave={() => setHoverCoord('')}
-                    >
-                      {isAccent && <>&bull;</>}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            <div className="matrix-caption">
-              <span>CENTER OCCUPATION</span>
-              <span>{hoverCoord ? `HOVER TARGET [${hoverCoord}]` : 'COORDINATES [E4, D4, E5, D5]'}</span>
-            </div>
+            <PuzzleWidget />
           </div>
         </section>
+
       </main>
 
       {/* Play With Friends Modal */}
@@ -214,7 +190,7 @@ export default function HomePage() {
         >
           <div className="editorial-modal-box">
             <div className="modal-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-              <div className="modal-protocol-tag" style={{ marginBottom: 0 }}>02 / PRIVATE MATCH</div>
+              <div className="modal-protocol-tag" style={{ marginBottom: 0 }}>PRIVATE MATCH</div>
               <button
                 type="button"
                 className="btn-modal-close"
@@ -319,7 +295,7 @@ export default function HomePage() {
       )}
 
       <IdentityModal />
-      <Footer />
+      {/* <Footer /> */}
     </>
   );
 }

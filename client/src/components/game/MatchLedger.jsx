@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 
+// Standard chess piece point values
 const PIECE_VALUES = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 const STARTING_PIECES = { p: 8, n: 2, b: 2, r: 2, q: 1 };
 const GLYPHS = {
@@ -7,16 +8,18 @@ const GLYPHS = {
   b: { p: '♟', n: '♞', b: '♝', r: '♜', q: '♛' },
 };
 
+// Side panel listing move history and live material advantage
 export default function MatchLedger({ chess, history = [] }) {
   const scrollRef = useRef(null);
 
+  // Auto-scroll to the newest move as moves are played
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [history]);
 
-  // Compute live material tally & balance from chess board
+  // Compute captured piece glyphs and material point difference
   const materialStats = useMemo(() => {
     if (!chess) {
       return { whiteCaptures: '—', blackCaptures: '—', balance: 'EVEN (0)' };
@@ -68,7 +71,7 @@ export default function MatchLedger({ chess, history = [] }) {
     };
   }, [chess, history]);
 
-  // Pair moves: [ [white, black], ... ]
+  // Pair consecutive half-moves into full turn rows: 1. e4 e5, 2. Nf3 Nc6
   const rows = [];
   for (let i = 0; i < history.length; i += 2) {
     const isLatestWhite = i === history.length - 1;
@@ -85,10 +88,11 @@ export default function MatchLedger({ chess, history = [] }) {
   return (
     <aside className="ledger-panel">
       <div className="panel-header">
-        <span className="panel-title">01 / MOVE JOURNAL</span>
+        <span className="panel-title">MOVE JOURNAL</span>
         <span className="panel-meta" id="match-round-tag">LIVE PGN</span>
       </div>
 
+      {/* Move list */}
       <div className="ledger-scroll" id="ledger-container" ref={scrollRef}>
         {rows.length === 0 ? (
           <div className="empty-ledger-notice" id="empty-ledger-notice">
@@ -105,6 +109,7 @@ export default function MatchLedger({ chess, history = [] }) {
         )}
       </div>
 
+      {/* Captured pieces and material points balance */}
       <div className="material-tally">
         <div className="tally-row">
           <span className="tally-label">WHITE CAPTURES:</span>
@@ -122,3 +127,4 @@ export default function MatchLedger({ chess, history = [] }) {
     </aside>
   );
 }
+

@@ -1,12 +1,12 @@
-# What this file does:
-# Stockfish is an external chess program (an executable file, like .exe on Windows
-# or a binary on Linux). It is not a Python library.
-# 
-# This file:
-# 1. Finds where the Stockfish program is located on the computer or server.
-# 2. Starts (spawns) Stockfish when an analysis request comes in.
-# 3. Limits how much CPU and RAM Stockfish can use (so it doesn't crash the server).
-# -------------------------------------------------------------------------
+"""
+Stockfish Engine Manager
+
+Stockfish is an external standalone chess engine (executable binary).
+This file:
+1. Locates the Stockfish executable across local folders, environment variables, or system PATH.
+2. Spawns an engine process via the UCI (Universal Chess Interface) protocol.
+3. Configures CPU thread and memory (Hash) limits to prevent server overload.
+"""
 
 import os
 import shutil
@@ -17,18 +17,18 @@ import chess.engine
 # Directory path of this ai_service folder
 SERVICE_DIR = Path(__file__).resolve().parent
 
-# Optional folder where a local copy of Stockfish might be placed
+# Optional local folder where a Stockfish executable might be placed
 DEFAULT_BIN_DIR = SERVICE_DIR / "bin"
 
 
 def find_stockfish_binary() -> Optional[str]:
     """
-    Finds the Stockfish program file by checking 3 places in order:
-    1. STOCKFISH_PATH environment setting (e.g. set in Docker / Render).
-    2. Local 'bin' folder inside ai_service (looks for .exe on Windows or binary on Linux).
-    3. System PATH (checks if Stockfish was installed globally via apt or brew).
-    
-    Returns the file path string if found, or None if missing.
+    Locates the Stockfish executable by checking 3 locations in order:
+    1. STOCKFISH_PATH environment variable (useful in Docker/Render deployments).
+    2. Local 'bin' directory inside ai_service (.exe on Windows or binary on Linux).
+    3. Global system PATH (e.g. /usr/games/stockfish installed via package manager).
+
+    Returns the file path string if found, or None if not found.
     """
     # 1. Check custom environment variable first
     env_path = os.getenv("STOCKFISH_PATH")
@@ -42,12 +42,12 @@ def find_stockfish_binary() -> Optional[str]:
             if "stockfish" in exe.name.lower():
                 return str(exe.resolve())
 
-        # Look for Linux executable file
+        # Look for Linux executable file with execute permissions
         for binary in DEFAULT_BIN_DIR.glob("**/stockfish*"):
             if binary.is_file() and os.access(binary, os.X_OK):
                 return str(binary.resolve())
 
-    # 3. Check system-wide installed programs (e.g. /usr/games/stockfish on Linux)
+    # 3. Check system PATH (e.g. installed globally on the operating system)
     which_path = shutil.which("stockfish")
     if which_path:
         return which_path
@@ -57,17 +57,17 @@ def find_stockfish_binary() -> Optional[str]:
 
 class EngineManager:
     """
-    Manages starting and talking to the Stockfish engine.
-    Uses UCI (Universal Chess Interface — the standard way programs communicate with chess engines).
+    Manages starting, configuring, and querying the Stockfish engine process.
+    Uses the standard Universal Chess Interface (UCI) protocol.
     """
 
     def __init__(self, binary_path: Optional[str] = None):
-        # Locate the executable once when the manager is created
+        # Locate the executable once when the manager is initialized
         self.binary_path = binary_path or find_stockfish_binary()
         self._engine: Optional[chess.engine.SimpleEngine] = None
 
     def is_available(self) -> bool:
-        """Checks if the Stockfish program file exists and is ready to run."""
+        """Checks if the Stockfish binary was found and is ready to run."""
         return bool(self.binary_path and os.path.exists(self.binary_path))
 
     def get_engine_name(self) -> str:
@@ -82,12 +82,12 @@ class EngineManager:
 
     def spawn_engine(self, threads: int = 2, hash_mb: int = 64) -> chess.engine.SimpleEngine:
         """
-        Starts a new Stockfish engine process to analyze a game.
-        
-        Resource Controls:
-        - threads: Number of CPU cores to use (set to 2 so it doesn't hog the server).
-        - hash_mb: Memory (RAM) cache in Megabytes for calculation trees.
-          64 MB is kept small on purpose so it comfortably fits within Render's 512 MB free RAM limit.
+        Starts a new Stockfish engine process to analyze a chess game.
+
+        Resource limits:
+        - threads: Number of CPU cores to use (default: 2, keeps CPU usage balanced).
+        - hash_mb: Memory (RAM) cache in megabytes for calculation trees.
+          64 MB is used to stay safely within free-tier cloud limits (e.g., Render 512 MB).
         """
         if not self.is_available():
             raise FileNotFoundError(f"Stockfish binary not found. Searched {self.binary_path}")
@@ -98,9 +98,10 @@ class EngineManager:
             # Apply CPU threads and memory limits
             engine.configure({"Threads": threads, "Hash": hash_mb})
         except Exception:
-            pass  # If engine doesn't support specific flags, proceed with defaults
+            # If the engine version does not support a specific flag, proceed with defaults
+            pass
         return engine
 
 
-# Default ready-to-use manager instance (Singleton: one shared instance across the service)
+# Shared singleton instance used across the AI service
 engine_manager = EngineManager()

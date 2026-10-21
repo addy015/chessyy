@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useToast } from '../../context/ToastContext';
 
+// Modal shown while waiting for an opponent (random queue or private room invite)
 export default function WaitingModal({
   isOpen,
   isPrivate = false,
@@ -13,6 +14,7 @@ export default function WaitingModal({
   const [timeLeft, setTimeLeft] = useState('10:00');
   const [isExpired, setIsExpired] = useState(false);
 
+  // 1-second countdown for private room expiration (10 minutes)
   useEffect(() => {
     if (!isOpen || !isPrivate || !expiresAt) return;
 
@@ -34,6 +36,7 @@ export default function WaitingModal({
 
   if (!isOpen) return null;
 
+  // Copy 6-character room code to clipboard
   const handleCopyCode = () => {
     if (!roomCode) return;
     navigator.clipboard.writeText(roomCode).then(() => {
@@ -43,6 +46,7 @@ export default function WaitingModal({
     });
   };
 
+  // Copy direct join URL to clipboard
   const handleCopyLink = () => {
     const inviteUrl = `${window.location.origin}/?join=${roomCode}`;
     navigator.clipboard.writeText(inviteUrl).then(() => {
@@ -52,17 +56,18 @@ export default function WaitingModal({
     });
   };
 
+  // View 1: Random matchmaking queue
   if (!isPrivate) {
     return (
       <div id="waiting-message" className="editorial-modal-backdrop">
         <div className="editorial-modal-box modal-center">
-          <div className="modal-protocol-tag">01 / MATCHMAKING</div>
+          <div className="modal-protocol-tag">MATCHMAKING</div>
           <h2 className="modal-headline">WAITING FOR ANOTHER PLAYER TO JOIN...</h2>
           <p className="modal-body-text">
             You are connected to the server. Game will initiate automatically as soon as an opponent connects.
           </p>
           <div className="modal-searching-tag" id="waiting-status-tag">
-            [SEARCHING / WAITING FOR OPPONENT...]
+            [WAITING FOR OPPONENT...]
           </div>
           <div className="modal-searching-tag" style={{ marginTop: '8px', color: 'var(--ink)', fontWeight: 700 }}>
             MATCH PACE: {timeControl}
@@ -72,20 +77,23 @@ export default function WaitingModal({
     );
   }
 
+  // View 2: Private friend room with room code and invite link
   return (
     <div id="private-waiting-modal" className="editorial-modal-backdrop">
       <div className="editorial-modal-box modal-center">
-        <div className="modal-protocol-tag">02 / PRIVATE MATCH</div>
+        <div className="modal-protocol-tag">PRIVATE MATCH</div>
         <h2 className="modal-headline modal-headline-sm">AWAITING FRIEND TO JOIN</h2>
         <p className="modal-body-text">
           Share this room code or invite link with your friend. You play as <strong>White</strong>; your friend will join as <strong>Black</strong>.
         </p>
 
+        {/* Room code display */}
         <div className="private-room-code-badge">
           <span className="code-label">ROOM CODE:</span>
           <span id="private-room-code" className="code-value">{roomCode || '------'}</span>
         </div>
 
+        {/* Expiration countdown timer */}
         <div className="private-room-timer-badge">
           <span>CODE EXPIRES IN:</span>
           <span id="private-room-timer" className="timer-countdown">{timeLeft}</span>
@@ -96,10 +104,11 @@ export default function WaitingModal({
         </div>
         <div className="modal-searching-tag">
           {isExpired
-            ? <span style={{ color: 'var(--vermilion, #ff3b30)' }}>[CODE EXPIRED // ROOM TERMINATED]</span>
-            : '[ROOM CREATED / WAITING FOR FRIEND TO JOIN...]'}
+            ? <span style={{ color: 'var(--vermilion, #ff3b30)' }}>[CODE EXPIRED - ROOM TERMINATED]</span>
+            : '[ROOM CREATED - WAITING FOR FRIEND TO JOIN...]'}
         </div>
 
+        {/* Share actions */}
         {!isExpired ? (
           <div className="modal-actions modal-actions-center" style={{ marginTop: '20px', gap: '10px', display: 'flex', flexWrap: 'wrap', justifyContent: 'center' }}>
             <button type="button" className="btn-editorial" onClick={handleCopyCode}>
@@ -123,3 +132,4 @@ export default function WaitingModal({
     </div>
   );
 }
+

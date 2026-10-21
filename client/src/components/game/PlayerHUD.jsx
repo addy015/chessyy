@@ -1,14 +1,14 @@
-import React from 'react';
 import MatchClock from './MatchClock';
 import { getPieceSymbol } from '../board/Piece';
 
+// Player status banner showing username, role color, captured pieces, and clock
 export default function PlayerHUD({
   color = 'w', // 'w' or 'b'
   handle = 'ANONYMOUS',
   timeMs = 600000,
   isTurnActive = false,
   isTimed = true,
-  capturedPieces = [], // array of piece chars ['p', 'n', ...]
+  capturedPieces = [], // Array of piece types captured from opponent: ['p', 'n', ...]
   isOpponent = false,
 }) {
   const colorName = color === 'w' ? 'WHITE' : 'BLACK';
@@ -22,12 +22,14 @@ export default function PlayerHUD({
 
   return (
     <div id={hudId} className={`player-banner ${positionClass}`}>
+      {/* Player name, role color badge, and captured piece glyphs */}
       <div className="player-identity">
         <span id={indicatorId} className={`player-role-indicator ${roleClass}`}></span>
         <span id={nameId} className="player-name-text">
           {cleanHandle} ({colorName})
         </span>
 
+        {/* Captured piece icons */}
         {capturedPieces && capturedPieces.length > 0 && (
           <span
             className="captured-pieces"
@@ -42,6 +44,7 @@ export default function PlayerHUD({
         )}
       </div>
 
+      {/* Countdown timer */}
       <div className="hud-clock-container">
         <MatchClock
           timeMs={timeMs}
@@ -53,3 +56,4 @@ export default function PlayerHUD({
     </div>
   );
 }
+

@@ -12,9 +12,13 @@ import CoachCard from '../components/review/CoachCard';
 import { downloadMatchPgn } from '../utils/matchExport';
 import { useUser } from '../context/UserContext';
 import { useSound } from '../context/SoundContext';
+import { evaluatePgnPositions, terminateStockfish } from '../engine/stockfishClient';
+import { buildMatchAnalysis } from '../engine/tacticalMatcher';
 
+// Fallback sample game if user opens review page without playing a match
 const DEMO_PGN = "1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7#";
 
+// Parses PGN to extract every intermediate FEN position and verbose move object
 function parsePositionsFromPgn(pgn) {
   const game = new Chess();
   const fens = [game.fen()];
@@ -25,6 +29,7 @@ function parsePositionsFromPgn(pgn) {
   }
 
   let loaded = false;
+  // Try standard PGN loader first
   try {
     if (game.load_pgn) {
       loaded = Boolean(game.load_pgn(pgn, { sloppy: true }));
@@ -36,8 +41,9 @@ function parsePositionsFromPgn(pgn) {
     loaded = false;
   }
 
+  // Fallback: Manually tokenize move strings if standard parser failed
   if (!loaded || game.history().length === 0) {
-    const cleanPgn = pgn.replace(/\[.*?\]/g, '').replace(/\{.*?\}/g, '');
+    const cleanPgn = pgn.replace(/\[[\s\S]*?\]/g, '').replace(/\{[\s\S]*?\}/g, '');
     const tokens = cleanPgn.replace(/\d+\./g, '').trim().split(/\s+/);
     game.reset();
     fens.length = 0;
@@ -50,12 +56,13 @@ function parsePositionsFromPgn(pgn) {
           const m = game.move(san, { sloppy: true });
           if (m) {
             fens.push(game.fen());
-            moves.push({ from: m.from, to: m.to, san: m.san });
+            moves.push({ from: m.from, to: m.to, san: m.san, piece: m.piece });
           }
         } catch (e) {}
       }
     });
   } else {
+    // Collect every position by stepping through verbose history
     const historyMoves = game.history({ verbose: true });
     game.reset();
     fens.length = 0;
@@ -64,7 +71,7 @@ function parsePositionsFromPgn(pgn) {
     historyMoves.forEach((m) => {
       game.move(m);
       fens.push(game.fen());
-      moves.push({ from: m.from, to: m.to, san: m.san });
+      moves.push({ from: m.from, to: m.to, san: m.san, piece: m.piece });
     });
   }
 
@@ -81,7 +88,7 @@ export default function ReviewPage() {
     playPromoteSound,
   } = useSound();
 
-  // Ephemeral match roster
+  // Load player roster saved during the match (or fallback to defaults)
   const [players] = useState(() => {
     try {
       const stored = sessionStorage.getItem('chessyy_review_players');
@@ -91,43 +98,68 @@ export default function ReviewPage() {
     }
   });
 
+  // Load completed match PGN from sessionStorage (falls back to DEMO_PGN if empty)
   const [activePgn] = useState(() => {
     try {
       const stored = sessionStorage.getItem('chessyy_review_pgn');
-      if (stored !== null) return stored.trim();
+      if (stored && stored.trim().length > 0) return stored.trim();
       return DEMO_PGN;
     } catch (e) {
-      return '';
+      return DEMO_PGN;
     }
   });
 
+  // Parse moves and FEN positions once when PGN loads
   const parsedData = useMemo(() => {
     return parsePositionsFromPgn(activePgn);
   }, [activePgn]);
 
   const { fens, moves: parsedMoves } = parsedData;
 
+  // Track currently viewed ply (starts at the final move of the game)
   const [currentPly, setCurrentPly] = useState(fens.length - 1);
-  const [isFlipped, setIsFlipped] = useState(() => {
+
+  // Keep current ply updated whenever moves change
+  useEffect(() => {
+    setCurrentPly(Math.max(0, fens.length - 1));
+  }, [fens.length]);
+
+  // Review perspective: automatically matches the player's role in the game
+  // If user played as Black -> 'b' (Black at bottom of board & bottom of eval bar)
+  // If user played as White -> 'w' (White at bottom of board & bottom of eval bar)
+  const perspective = useMemo(() => {
+    try {
+      const storedRole = sessionStorage.getItem('chessyy_review_role');
+      if (storedRole === 'b' || storedRole === 'w') {
+        return storedRole;
+      }
+    } catch (e) {}
+
     const black = (players?.black || '').toUpperCase().trim();
-    return Boolean(myHandle && black && black === myHandle.toUpperCase().trim());
-  });
+    const white = (players?.white || '').toUpperCase().trim();
+    const me = (myHandle || '').toUpperCase().trim();
+
+    if (me && black && me === black) return 'b';
+    if (me && white && me === white) return 'w';
+    return 'w';
+  }, [players, myHandle]);
 
   // Stockfish analysis state
   const [analysisData, setAnalysisData] = useState(null);
   const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(true);
   const [isOffline, setIsOffline] = useState(false);
 
-  // Official PGN download handler
+  // Export match as a PGN file
   const handleDownloadPgn = useCallback(() => {
     downloadMatchPgn(activePgn, players, analysisData);
   }, [activePgn, players, analysisData]);
 
-  // Anti-abuse retry state
+  // Anti-abuse retry counter and cooldown timer for engine analysis
   const [retryCount, setRetryCount] = useState(0);
   const [retryCooldown, setRetryCooldown] = useState(0);
   const MAX_RETRIES = 3;
 
+  // 1-second interval ticker for retry cooldown
   useEffect(() => {
     if (retryCooldown <= 0) return;
     const timer = setInterval(() => {
@@ -136,7 +168,7 @@ export default function ReviewPage() {
     return () => clearInterval(timer);
   }, [retryCooldown]);
 
-  // Sync board wrapper height to eval bar
+  // Match the vertical evaluation bar height dynamically to the board wrapper
   const boardWrapperRef = useRef(null);
   const [boardHeight, setBoardHeight] = useState(520);
 
@@ -163,7 +195,7 @@ export default function ReviewPage() {
     };
   }, []);
 
-  // Play sound on stepping moves
+  // Play appropriate sound effect based on SAN notation (+, x, O-O, =)
   const playSoundForPly = useCallback(
     (ply) => {
       if (ply <= 0) return;
@@ -194,8 +226,8 @@ export default function ReviewPage() {
     [analysisData, parsedMoves, playCheckSound, playCaptureSound, playCastleSound, playPromoteSound, playMoveSound]
   );
 
-  // Core fetch function for analysis
-  const executeAnalysisFetch = useCallback(async (isRetry = false) => {
+  // Runs deep Stockfish engine evaluation and Gemini AI coach review
+  const executeAnalysisFetch = useCallback(async () => {
     if (parsedMoves.length === 0) {
       setIsLoadingAnalysis(false);
       setIsOffline(false);
@@ -205,8 +237,9 @@ export default function ReviewPage() {
         evalGraph: [0.0],
         moves: [],
         coachSummary: {
-          whiteTip: 'No moves were played in this match.',
-          blackTip: 'No moves were played in this match.',
+          gameNarrative: 'No moves were played in this match.',
+          whiteTip: 'No moves recorded.',
+          blackTip: 'No moves recorded.',
         },
       });
       return;
@@ -216,48 +249,181 @@ export default function ReviewPage() {
     setIsOffline(false);
 
     try {
-      const response = await fetch('/api/game/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pgn: activePgn }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
+      // 1. Fetch server analysis with automatic retry before falling back
+      let response = null;
+      let lastFetchErr = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          response = await fetch('/api/game/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              pgn: activePgn,
+              includeCoach: false,
+            }),
+          });
+          if (response.ok) break;
+          throw new Error(`Analyze API returned HTTP ${response.status}`);
+        } catch (err) {
+          lastFetchErr = err;
+          if (attempt === 0) {
+            await new Promise((r) => setTimeout(r, 800));
+          }
+        }
       }
 
-      const data = await response.json();
-      setAnalysisData(data);
-      setIsOffline(false);
-    } catch (err) {
-      console.error('[ReviewPage] Analysis fetch error:', err);
-      if (!isRetry) {
-        setTimeout(() => {
-          executeAnalysisFetch(true);
-        }, 1200);
-        return;
+      if (!response || !response.ok) {
+        throw lastFetchErr || new Error('Analyze API request failed');
       }
-      setIsOffline(true);
-    } finally {
+
+      const serverData = await response.json();
+
+      // Rule-based tactical explanations (free, instant, zero AI token cost)
+      const getMoveExplanation = (m) => {
+        const san = m.san || '';
+        const best = m.bestMove || '';
+        if (san.includes('#')) return 'Checkmate! Decisive finish.';
+        if (m.badge === 'BOOK') return 'Standard opening book theory.';
+        if (m.badge === 'BRILLIANT') return 'Brilliant move! A piece sacrifice that keeps winning pressure.';
+        if (m.badge === 'BEST') return 'Best move. Finds the most accurate engine continuation.';
+        if (m.badge === 'BLUNDER') return `Blunder. Concedes decisive advantage. Better was ${best || 'an alternative'}.`;
+        if (m.badge === 'MISTAKE') return `Mistake. Concedes ground to opponent. Recommended was ${best || 'an alternative'}.`;
+        if (m.badge === 'INACCURACY') return `Inaccuracy. Slightly loosens position. Preferred was ${best || 'an alternative'}.`;
+        if (m.badge === 'EXCELLENT') return 'Excellent move. Keeps position sharp and balanced.';
+        return 'Solid move. Preserves steady play.';
+      };
+
+      // Ensure each move has display-ready fields for journal and suggestion box
+      const enrichedMoves = (serverData.moves || []).map((m, idx) => ({
+        ...m,
+        ply: m.ply || idx + 1,
+        color: m.color || (idx % 2 === 0 ? 'white' : 'black'),
+        san: m.san,
+        bestMove: m.bestMove || '—',
+        badge: m.badge || 'GOOD',
+        explanation: getMoveExplanation(m),
+      }));
+
+      const fullAnalysis = {
+        whiteAccuracy: serverData.whiteAccuracy !== undefined ? serverData.whiteAccuracy : '—',
+        blackAccuracy: serverData.blackAccuracy !== undefined ? serverData.blackAccuracy : '—',
+        evalGraph: Array.isArray(serverData.evalGraph) && serverData.evalGraph.length > 0 ? serverData.evalGraph : [0.0],
+        moves: enrichedMoves,
+        coachSummary: serverData.coachSummary || {},
+      };
+
+      setAnalysisData(fullAnalysis);
       setIsLoadingAnalysis(false);
-    }
-  }, [activePgn, parsedMoves.length]);
 
-  // Initial fetch on mount
+      // 2. Fetch full Grandmaster debrief narrative based on actual match turning points
+      const turningPoints = enrichedMoves
+        .filter((m) => m.isTurningPoint || ['BLUNDER', 'MISTAKE', 'MISSED_WIN', 'BRILLIANT'].includes(m.badge))
+        .map((m) => ({
+          ply: m.ply,
+          san: m.san,
+          badge: m.badge,
+          bestMove: m.bestMove,
+        }))
+        .slice(0, 4);
+
+      try {
+        const debriefRes = await fetch('/api/game/debrief', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            whiteHandle: players?.white || 'WHITE',
+            blackHandle: players?.black || 'BLACK',
+            whiteAccuracy: fullAnalysis.whiteAccuracy,
+            blackAccuracy: fullAnalysis.blackAccuracy,
+            opening: 'Standard Opening',
+            turningPoints,
+          }),
+        });
+
+        if (debriefRes.ok) {
+          const debriefData = await debriefRes.json();
+          setAnalysisData((prev) => ({
+            ...prev,
+            coachSummary: {
+              ...prev?.coachSummary,
+              ...debriefData,
+            },
+          }));
+        }
+      } catch (debriefErr) {
+        console.warn('[ReviewPage] Debrief narrative fetch fallback:', debriefErr);
+      }
+    } catch (serverErr) {
+      console.warn('[ReviewPage] Server Stockfish error, falling back to client evaluation:', serverErr);
+      try {
+        const evaluations = await evaluatePgnPositions(fens, null, 8);
+        const localAnalysis = buildMatchAnalysis({
+          parsedMoves,
+          evaluations,
+          fens,
+        });
+
+        // Set local analysis immediately so user can review moves
+        setAnalysisData(localAnalysis);
+        setIsLoadingAnalysis(false);
+
+        // Still attempt to get GM coach debrief narrative from server if reachable
+        try {
+          const debriefRes = await fetch('/api/game/debrief', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              whiteHandle: players?.white || 'WHITE',
+              blackHandle: players?.black || 'BLACK',
+              whiteAccuracy: localAnalysis.whiteAccuracy,
+              blackAccuracy: localAnalysis.blackAccuracy,
+              opening: 'Standard Opening',
+              turningPoints: localAnalysis.turningPoints || [],
+            }),
+          });
+          if (debriefRes.ok) {
+            const debriefData = await debriefRes.json();
+            setAnalysisData((prev) => ({
+              ...prev,
+              coachSummary: {
+                ...prev?.coachSummary,
+                ...debriefData,
+              },
+            }));
+          }
+        } catch (debriefErr) {
+          console.warn('[ReviewPage] Client fallback debrief narrative fetch error:', debriefErr);
+        }
+      } catch (clientErr) {
+        console.error('[ReviewPage] Both server and client evaluation failed:', clientErr);
+        setIsOffline(true);
+        setIsLoadingAnalysis(false);
+      }
+    }
+  }, [activePgn, fens, parsedMoves, players]);
+
+  // Clean up Stockfish worker thread when user navigates away
+  useEffect(() => {
+    return () => {
+      terminateStockfish();
+    };
+  }, []);
+
+  // Trigger analysis on mount
   useEffect(() => {
     executeAnalysisFetch();
   }, [executeAnalysisFetch]);
 
-  // User-triggered Retry Evaluation with Anti-Abuse Rate-Limiting
+  // Manual retry
   const handleRetryAnalysis = useCallback(() => {
     if (isLoadingAnalysis || retryCooldown > 0 || retryCount >= MAX_RETRIES) return;
 
     setRetryCount((prev) => prev + 1);
-    setRetryCooldown(10); // 10-second strict cooldown to prevent spamming
-    executeAnalysisFetch(true);
+    setRetryCooldown(5); // 5-second cooldown
+    executeAnalysisFetch();
   }, [isLoadingAnalysis, retryCooldown, retryCount, executeAnalysisFetch]);
 
-  // Display chess instance for current ply FEN
+  // Chess instance showing board state for current ply
   const displayChess = useMemo(() => {
     const c = new Chess();
     if (fens[currentPly]) {
@@ -265,6 +431,7 @@ export default function ReviewPage() {
     }
     return c;
   }, [fens, currentPly]);
+
 
   const lastMove =
     currentPly > 0 && parsedMoves[currentPly - 1]
@@ -292,8 +459,28 @@ export default function ReviewPage() {
     return 0.0;
   }, [analysisData, currentPly]);
 
-  const currentMoveInfo = analysisData?.moves?.[currentPly - 1] || null;
+  // Tactical move details and engine recommendation for the currently selected ply
+  const currentMoveInfo = useMemo(() => {
+    if (currentPly <= 0) return null;
+    if (analysisData?.moves && analysisData.moves[currentPly - 1]) {
+      return analysisData.moves[currentPly - 1];
+    }
+    if (parsedMoves && parsedMoves[currentPly - 1]) {
+      const pm = parsedMoves[currentPly - 1];
+      return {
+        ply: currentPly,
+        san: pm.san,
+        color: currentPly % 2 !== 0 ? 'white' : 'black',
+        eval: currentEval,
+        bestMove: '—',
+        badge: '...',
+        explanation: 'Evaluating move with Stockfish...',
+      };
+    }
+    return null;
+  }, [currentPly, analysisData, parsedMoves, currentEval]);
 
+  // Stepper navigation handlers
   const handleStepFirst = () => {
     setCurrentPly(0);
   };
@@ -320,14 +507,12 @@ export default function ReviewPage() {
     playSoundForPly(lastPly);
   };
 
-  const handleFlip = () => {
-    setIsFlipped((prev) => !prev);
-  };
-
+  // Jump to specific move clicked in the move journal
   const handleSelectPly = (ply) => {
     setCurrentPly(ply);
     playSoundForPly(ply);
   };
+
 
   return (
     <>
@@ -344,19 +529,22 @@ export default function ReviewPage() {
         />
 
         {/* Center Stage: Eval Bar + Chessboard + Stepper */}
+        {/* Center Stage: Board Row (Eval Bar + Chessboard) + Full-width Stepper & GM Coach Story */}
         <main className="board-and-eval-container">
-          <EvalBar evalScore={currentEval} height={boardHeight} />
+          <div className="review-stage-column">
+            <div className="review-board-row">
+              <EvalBar evalScore={currentEval} height={boardHeight} perspective={perspective} />
 
-          <div className="review-board-area">
-            <div className="board-wrapper" ref={boardWrapperRef}>
-              <ChessBoard
-                chess={displayChess}
-                playerRole={isFlipped ? 'b' : 'w'}
-                selectedSquare={null}
-                possibleMoves={[]}
-                lastMove={lastMove}
-                onSquareClick={null}
-              />
+              <div className="board-wrapper" ref={boardWrapperRef}>
+                <ChessBoard
+                  chess={displayChess}
+                  playerRole={perspective}
+                  selectedSquare={null}
+                  possibleMoves={[]}
+                  lastMove={lastMove}
+                  onSquareClick={null}
+                />
+              </div>
             </div>
 
             <StepperControls
@@ -366,12 +554,17 @@ export default function ReviewPage() {
               onPrev={handleStepPrev}
               onNext={handleStepNext}
               onLast={handleStepLast}
-              onFlip={handleFlip}
+            />
+
+            <CoachCard
+              coachSummary={analysisData?.coachSummary}
+              isOffline={isOffline}
+              isLoading={isLoadingAnalysis}
             />
           </div>
         </main>
 
-        {/* Right Column: Move Journal, Engine Suggestion, AI Coach */}
+        {/* Right Column: Move Journal & Engine Suggestion */}
         <aside className="review-journal-panel">
           <MoveJournal
             moves={journalMoves}
@@ -390,16 +583,10 @@ export default function ReviewPage() {
             currentPly={currentPly}
             moveInfo={currentMoveInfo}
             maxPly={fens.length - 1}
-          />
-
-          <CoachCard
-            coachSummary={analysisData?.coachSummary}
-            isOffline={isOffline}
+            currentFen={fens[Math.max(0, currentPly - 1)]}
           />
         </aside>
       </div>
-
-      <Footer />
     </>
   );
 }

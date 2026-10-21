@@ -1,18 +1,20 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// https://vite.dev/config/
+// Vite configuration for the React frontend
 export default defineConfig({
   plugins: [react()],
   server: {
+    host: true, // Listen on all network addresses for local device testing
     port: 5173,
     proxy: {
+      // Forward WebSocket traffic to the Express backend on port 5000
       '/socket.io': {
         target: 'http://localhost:5000',
         ws: true,
         configure: (proxy) => {
           proxy.on('error', (err) => {
-            // Gracefully ignore benign browser refresh TCP resets
+            // Ignore normal disconnects when refreshing the browser
             if (err.code === 'ECONNRESET' || err.code === 'EPIPE') return;
             console.error('[vite] ws proxy error:', err.message);
           });
@@ -24,9 +26,11 @@ export default defineConfig({
           });
         },
       },
+      // Forward API requests to Express
       '/api': {
         target: 'http://localhost:5000',
       },
+      // Forward health check endpoint
       '/health': {
         target: 'http://localhost:5000',
       },

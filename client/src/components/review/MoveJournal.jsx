@@ -1,5 +1,6 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 
+// Scrollable table of played moves with engine evaluation badges and click-to-jump replay
 export default function MoveJournal({
   moves = [],
   currentPly = 0,
@@ -15,6 +16,7 @@ export default function MoveJournal({
   const activeRowRef = useRef(null);
   const scrollContainerRef = useRef(null);
 
+  // Auto-scroll the move list container whenever the selected ply changes
   useEffect(() => {
     const container = scrollContainerRef.current;
     const row = activeRowRef.current;
@@ -32,7 +34,7 @@ export default function MoveJournal({
     }
   }, [currentPly]);
 
-  // Group moves into pairs (White move + Black move per row)
+  // Group flat moves list into standard turns (White move + optional Black move per row)
   const pairedMoves = [];
   for (let i = 0; i < moves.length; i += 2) {
     pairedMoves.push({
@@ -42,6 +44,7 @@ export default function MoveJournal({
     });
   }
 
+  // Renders colored classification badge 
   const renderBadge = (badge) => {
     if (!badge || badge === '...') {
       return (
@@ -62,11 +65,13 @@ export default function MoveJournal({
 
   return (
     <div className="review-journal-panel-wrapper">
+      {/* Journal title and current ply counter */}
       <div className="panel-header">
         <span className="panel-title">EVALUATION JOURNAL</span>
         <span className="panel-meta" id="ply-counter">PLY {currentPly} / {maxPly}</span>
       </div>
 
+      {/* Offline banner with retry evaluation button and cooldown countdown */}
       {isOffline && (
         <div className="review-offline-banner">
           <div className="offline-msg">
@@ -96,6 +101,7 @@ export default function MoveJournal({
         </div>
       )}
 
+      {/* Scrollable list of move turns */}
       <div className="review-journal-scroll" id="review-moves-container" ref={scrollContainerRef}>
         {pairedMoves.length === 0 ? (
           <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--ink-muted)' }}>
@@ -112,9 +118,10 @@ export default function MoveJournal({
                 className="review-move-row"
                 ref={isWhiteActive || isBlackActive ? activeRowRef : null}
               >
+                {/* Move turn number */}
                 <span className="move-number-tag">{row.moveNumber}.</span>
 
-                {/* White move */}
+                {/* White move cell */}
                 <div
                   className={`review-move-cell ${isWhiteActive ? 'active-ply' : ''}`}
                   onClick={() => onSelectPly(row.white.ply)}
@@ -123,7 +130,7 @@ export default function MoveJournal({
                   {renderBadge(row.white.badge)}
                 </div>
 
-                {/* Black move */}
+                {/* Black move cell */}
                 {row.black ? (
                   <div
                     className={`review-move-cell ${isBlackActive ? 'active-ply' : ''}`}

@@ -1,21 +1,20 @@
-// What this file does:
-// 1. Preloads and decodes authentic Chess.com SFXs (move, capture, check, castle, promote, low-time, game-over).
-// 2. Uses in-memory decoded AudioBuffers for sub-millisecond playback.
-// 3. Includes procedural synthesis fallback so sound NEVER fails even if offline.
-// 4. Supports user mute toggle with persistent localStorage memory.
-// -------------------------------------------------------------------------
+// Chess sound manager:
+// 1. Plays mp3 files for move, capture, check, castle, promote, low-time, and game-over.
+// 2. Keeps sounds in memory so they play instantly with zero lag.
+// 3. Generates synthesized sounds with Web Audio if mp3 files fail to load or user is offline.
+// 4. Remembers mute settings in localStorage.
 
 let audioCtx = null;
 let isAudioMuted = false;
 
-// Initialize mute state from localStorage
+// Load saved mute setting from browser storage
 try {
     isAudioMuted = localStorage.getItem('chessyy_audio_muted') === 'true';
-} catch (e) {
+} catch {
     isAudioMuted = false;
 }
 
-// Sound file registry mapping to local Chess.com SFX assets
+// List of sound files stored in the public /sounds folder
 const SOUND_FILES = {
     'move_self':     '/sounds/move-self.mp3',
     'move_opponent': '/sounds/move-opponent.mp3',
@@ -27,156 +26,90 @@ const SOUND_FILES = {
     'low_time':      '/sounds/tenseconds.mp3'
 };
 
-// In-memory cache of decoded AudioBuffers (PCM)
-const audioBufferCache = new Map();
-// Cache of raw downloaded ArrayBuffers prior to user audio gesture
-const rawAudioBuffers = new Map();
-let hasUserInteracted = false;
+// Reusable audio elements stored in memory so we don't reload files on every move
+const audioElements = new Map();
 
-/**
- * Returns or initializes the AudioContext singleton on/after a user gesture.
- */
-function getAudioContext(fromUserGesture = false) {
-    if (fromUserGesture) {
-        hasUserInteracted = true;
-    }
-    // Prevent unprompted AudioContext creation before any user gesture
-    if (!hasUserInteracted && !fromUserGesture) {
-        return null;
-    }
-
+// Starts or resumes the browser's audio synthesizer
+function getAudioContext() {
     if (!audioCtx) {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         if (AudioContextClass) {
             try {
                 audioCtx = new AudioContextClass();
-            } catch (e) {
+            } catch {
                 audioCtx = null;
             }
         }
     }
-    if (audioCtx && audioCtx.state === 'suspended' && (hasUserInteracted || fromUserGesture)) {
+    // Resume audio context if the browser suspended it
+    if (audioCtx && audioCtx.state === 'suspended') {
         audioCtx.resume().catch(() => {});
     }
     return audioCtx;
 }
 
-/**
- * Prefetches sound files via standard HTTP fetch without touching Web Audio API.
- */
-async function fetchAudioFiles() {
-    for (const [key, path] of Object.entries(SOUND_FILES)) {
-        if (rawAudioBuffers.has(key) || audioBufferCache.has(key)) continue;
-        try {
-            const resp = await fetch(path);
-            if (!resp.ok) continue;
-            const buf = await resp.arrayBuffer();
-            rawAudioBuffers.set(key, buf);
-        } catch (e) {
-            // Ignore prefetch failures
-        }
-    }
-}
-
-/**
- * Decodes all sound effects into RAM once AudioContext is active.
- */
-async function preloadSounds(fromUserGesture = false) {
-    const ctx = getAudioContext(fromUserGesture);
+// Plays a generated sound if the mp3 file fails or cannot be loaded
+function playFallback(fallbackFn) {
+    if (isAudioMuted || typeof fallbackFn !== 'function') return;
+    const ctx = getAudioContext();
     if (!ctx) return;
-
-    for (const [key, path] of Object.entries(SOUND_FILES)) {
-        if (audioBufferCache.has(key)) continue;
-        try {
-            let arrayBuf = rawAudioBuffers.get(key);
-            if (!arrayBuf) {
-                const resp = await fetch(path);
-                if (!resp.ok) continue;
-                arrayBuf = await resp.arrayBuffer();
-            }
-            const decoded = await ctx.decodeAudioData(arrayBuf.slice(0));
-            audioBufferCache.set(key, decoded);
-            rawAudioBuffers.delete(key);
-        } catch (e) {
-            // Buffer failed to decode, procedural fallback will be used
-        }
-    }
-}
-
-// Auto-unlock AudioContext and trigger sound preload on first user interaction
-if (typeof window !== 'undefined') {
-    const unlockEvents = ['pointerdown', 'touchstart', 'keydown', 'click'];
-    const unlockAudio = () => {
-        hasUserInteracted = true;
-        getAudioContext(true);
-        preloadSounds(true);
-        unlockEvents.forEach((ev) => window.removeEventListener(ev, unlockAudio));
-    };
-
-    unlockEvents.forEach((ev) => {
-        window.addEventListener(ev, unlockAudio, { once: true, passive: true });
-    });
-
-    // Network prefetch only — zero AudioContext creation on page load
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', fetchAudioFiles);
-    } else {
-        fetchAudioFiles();
-    }
-}
-
-/**
- * Internal helper to play a decoded AudioBuffer with gain control.
- */
-function playBuffer(key, fallbackFn) {
-    if (isAudioMuted) return;
-    const ctx = getAudioContext(true);
-    if (!ctx) return;
-
-    const buffer = audioBufferCache.get(key);
-    if (buffer) {
-        try {
-            const source = ctx.createBufferSource();
-            const gain = ctx.createGain();
-            source.buffer = buffer;
-            gain.gain.value = 0.9;
-            source.connect(gain);
-            gain.connect(ctx.destination);
-            source.start(0);
-            return;
-        } catch (e) {}
-    }
-
-    // Fallback to procedural synthesis if buffer is unavailable
-    if (typeof fallbackFn === 'function') {
+    try {
         fallbackFn(ctx);
+    } catch {
+        // Ignore audio playback errors
     }
 }
 
-/**
- * Checks if sound effects are currently muted.
- */
+// Plays an mp3 sound file, or uses the synthesizer fallback if playback fails
+function playSoundFile(key, fallbackFn) {
+    if (isAudioMuted) return;
+
+    if (typeof window !== 'undefined' && window.Audio) {
+        try {
+            let audio = audioElements.get(key);
+            if (!audio) {
+                audio = new Audio(SOUND_FILES[key]);
+                audio.volume = 0.85;
+                audioElements.set(key, audio);
+            }
+            // Rewind to start in case the sound is already playing
+            audio.currentTime = 0;
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+                playPromise.catch((err) => {
+                    // Ignore abort errors caused by rapid playback interruptions so fallback synthesizer does not double-play
+                    if (err && (err.name === 'AbortError' || err.code === 20)) return;
+                    playFallback(fallbackFn);
+                });
+            }
+            return;
+        } catch {
+            playFallback(fallbackFn);
+            return;
+        }
+    }
+    playFallback(fallbackFn);
+}
+
+// Check if sounds are currently muted
 export function isMuted() {
     return isAudioMuted;
 }
 
-/**
- * Toggles sound effects mute state and persists to localStorage.
- */
+// Turn sound on/off and save the choice in browser storage
 export function toggleMute() {
     isAudioMuted = !isAudioMuted;
     try {
         localStorage.setItem('chessyy_audio_muted', isAudioMuted ? 'true' : 'false');
-    } catch (e) {}
+    } catch {}
     return isAudioMuted;
 }
 
-/**
- * Plays Chess.com move sound (self or opponent).
- */
+// Play piece move sound (different sound file for self vs opponent)
 export function playMoveSound(isSelf = true) {
     const key = isSelf ? 'move_self' : 'move_opponent';
-    playBuffer(key, (ctx) => {
+    playSoundFile(key, (ctx) => {
+        // Fallback: short wooden click sound
         const now = ctx.currentTime;
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -201,11 +134,10 @@ export function playMoveSound(isSelf = true) {
     });
 }
 
-/**
- * Plays Chess.com capture sound.
- */
+// Play piece capture sound
 export function playCaptureSound() {
-    playBuffer('capture', (ctx) => {
+    playSoundFile('capture', (ctx) => {
+        // Fallback: sharp snap sound
         const now = ctx.currentTime;
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -223,11 +155,10 @@ export function playCaptureSound() {
     });
 }
 
-/**
- * Plays Chess.com check alert sound.
- */
+// Play check warning sound
 export function playCheckSound() {
-    playBuffer('check', (ctx) => {
+    playSoundFile('check', (ctx) => {
+        // Fallback: two-tone chime
         const now = ctx.currentTime;
         [880, 1320].forEach((freq, idx) => {
             const osc = ctx.createOscillator();
@@ -245,24 +176,20 @@ export function playCheckSound() {
     });
 }
 
-/**
- * Plays Chess.com castling sound.
- */
+// Play castling sound (plays two move sounds back-to-back)
 export function playCastleSound() {
-    playBuffer('castle', () => {
-        // Fallback: two rapid move clicks
+    playSoundFile('castle', () => {
         playMoveSound(true);
         setTimeout(() => playMoveSound(true), 80);
     });
 }
 
-/**
- * Plays Chess.com pawn promotion sound.
- */
+// Play pawn promotion sound
 export function playPromoteSound() {
-    playBuffer('promote', (ctx) => {
+    playSoundFile('promote', (ctx) => {
+        // Fallback: three rising musical notes
         const now = ctx.currentTime;
-        [523.25, 659.25, 783.99].forEach((freq, i) => { // C5, E5, G5 arpeggio
+        [523.25, 659.25, 783.99].forEach((freq, i) => {
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.type = 'sine';
@@ -277,11 +204,10 @@ export function playPromoteSound() {
     });
 }
 
-/**
- * Plays Chess.com low-time urgency tick.
- */
+// Play countdown tick when 10 seconds or less remain on the clock
 export function playLowTimeTickSound() {
-    playBuffer('low_time', (ctx) => {
+    playSoundFile('low_time', (ctx) => {
+        // Fallback: quick high-pitch tick
         const now = ctx.currentTime;
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -296,11 +222,10 @@ export function playLowTimeTickSound() {
     });
 }
 
-/**
- * Plays Chess.com game-end chime.
- */
+// Play game over chime when match ends
 export function playGameOverSound() {
-    playBuffer('game_end', (ctx) => {
+    playSoundFile('game_end', (ctx) => {
+        // Fallback: three descending tones
         const now = ctx.currentTime;
         const freqs = [440, 349.23, 261.63];
         freqs.forEach((freq, i) => {
@@ -317,3 +242,4 @@ export function playGameOverSound() {
         });
     });
 }
+

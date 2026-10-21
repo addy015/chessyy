@@ -1,31 +1,27 @@
-// What this file does:
-// This is the main entry point for the Node.js server.
-// It sets up Express (for serving React SPA, static assets, and API routes)
-// and Socket.io (for real-time multiplayer chess moves and chat).
-// -------------------------------------------------------------------------
+// Main server entry point: sets up Express, Socket.io, and static files
 
 const express = require('express');
 const http = require('http');
 const socket = require('socket.io');
 const path = require('path');
 const fs = require('fs');
-require('dotenv').config(); // Load environment settings from .env file
+require('dotenv').config(); // Load environment variables from .env file
 
-// Import route handlers and real-time socket logic
+// Import routes and socket handlers
 const webRoutes = require('./routes/web');
 const { initGameSocket } = require('./sockets/gameSocket');
 
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
-// Initialize Express app and attach it to an HTTP server
+// Create Express app and wrap in HTTP server
 const app = express();
 const server = http.createServer(app);
 
-// Security: Disable Express fingerprinting
+// Hide Express fingerprinting header
 app.disable('x-powered-by');
 
-// Security: Configure HTTP Security Headers via Helmet
+// Security headers (CSP rules for styles, fonts, and websockets)
 app.use(
     helmet({
         contentSecurityPolicy: {
@@ -44,17 +40,17 @@ app.use(
     })
 );
 
-// Security: Global rate limiter for API endpoints (prevent abuse & DoS)
+// Rate limiter: max 300 API requests per 15 minutes to prevent spam
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: 100,
+    limit: 300,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
     message: { error: 'TOO_MANY_REQUESTS', detail: 'Too many requests, please try again later.' }
 });
 app.use('/api/', apiLimiter);
 
-// Security: WebSocket Origin allowlist (defends against Cross-Site WebSocket Hijacking - CSWSH)
+// Allowed origins for WebSocket connections
 const allowedSocketOrigins = [
     'http://localhost:3000',
     'http://127.0.0.1:3000',
@@ -68,30 +64,35 @@ if (process.env.ALLOWED_ORIGINS) {
     allowedSocketOrigins.push(...process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()));
 }
 
-// Attach Socket.io with CSWSH protection and packet buffer limits
+// Socket.io configuration with allowed origins and 100 KB packet cap
 const io = socket(server, {
     cors: {
         origin: (origin, callback) => {
-            // Allow same-origin / non-browser / trusted clients
+            // Allow same-origin or trusted domain
             if (!origin || allowedSocketOrigins.includes(origin)) {
                 return callback(null, true);
             }
+            // Allow local network IP testing in development
+            try {
+                const url = new URL(origin);
+                const isLan = /^(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})$/.test(url.hostname);
+                if (isLan) {
+                    return callback(null, true);
+                }
+            } catch (err) {}
             console.warn(`[Security] Blocked unauthorized WebSocket handshake origin: ${origin}`);
             return callback(new Error('Cross-Origin WebSocket connection denied by security policy'), false);
         },
         methods: ['GET', 'POST'],
         credentials: true
     },
-    maxHttpBufferSize: 1e5 // 100 KB payload cap per WebSocket packet
+    maxHttpBufferSize: 1e5 // 100 KB payload limit per packet
 });
 
-// View engine: Not needed (Pure React SPA served from /client/dist)
-
-// Middleware:
-// 1. express.json({ limit: '64kb' }) enforces strict payload cap to prevent RAM exhaustion.
-// 2. express.static() serves React build from /client/dist and assets from /public.
+// Parse JSON request bodies up to 64KB
 app.use(express.json({ limit: '64kb' }));
 
+// Serve React production build from /client/dist and static assets from /public
 const clientDistPath = path.join(__dirname, 'client', 'dist');
 if (fs.existsSync(clientDistPath)) {
     app.use(express.static(clientDistPath));
@@ -101,8 +102,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Web API routes (/health, /api/game/analyze)
 app.use('/', webRoutes);
 
-// React SPA Fallback Handler (Compatible with Express 5)
-// Serves React index.html for all non-API GET routes (/, /play, /review)
+// SPA fallback: return index.html for page routes (like /play and /review)
 app.use((req, res, next) => {
     if (req.method === 'GET' && !req.url.startsWith('/api') && !req.url.startsWith('/socket.io') && !req.url.startsWith('/health')) {
         const indexPath = path.join(clientDistPath, 'index.html');
@@ -113,11 +113,12 @@ app.use((req, res, next) => {
     next();
 });
 
-// Start live chess game room management and chat socket events
+// Initialize real-time chess sockets
 initGameSocket(io);
 
-// Server port: uses hosting environment port (like Render's $PORT) or defaults to 3000 locally
+// Start server on configured port (default: 3000)
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`[CHESSYY] Server listening on port ${PORT}`);
 });
+
