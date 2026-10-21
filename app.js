@@ -21,7 +21,7 @@ const server = http.createServer(app);
 // Hide Express fingerprinting header
 app.disable('x-powered-by');
 
-// Security headers (CSP rules for styles, fonts, and websockets)
+// Security headers (CSP rules for styles, fonts, websockets, and external puzzle APIs)
 app.use(
     helmet({
         contentSecurityPolicy: {
@@ -30,8 +30,15 @@ app.use(
                 scriptSrc: ["'self'", "'unsafe-inline'"],
                 styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
                 fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
-                imgSrc: ["'self'", 'data:', 'blob:'],
-                connectSrc: ["'self'", 'ws:', 'wss:'],
+                imgSrc: ["'self'", 'data:', 'blob:', 'https://images.chesscomfiles.com', 'https://lichess1.org'],
+                connectSrc: [
+                    "'self'",
+                    'ws:',
+                    'wss:',
+                    'https://lichess.org',
+                    'https://*.lichess.org',
+                    'https://api.chess.com',
+                ],
                 objectSrc: ["'none'"],
                 upgradeInsecureRequests: [],
             },
