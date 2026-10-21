@@ -26,8 +26,12 @@ const SOUND_FILES = {
     'low_time':      '/sounds/tenseconds.mp3'
 };
 
-// Reusable audio elements stored in memory so we don't reload files on every move
-const audioElements = new Map();
+// Reusable decoded AudioBuffers stored in memory (RAM) for instant playback
+const audioBuffers = new Map();
+// Tracking ongoing fetch/decode promises to avoid duplicate network fetches
+const pendingLoads = new Map();
+// Fallback HTML5 audio elements if Web Audio is unsupported
+const fallbackAudioElements = new Map();
 
 // Starts or resumes the browser's audio synthesizer
 function getAudioContext() {
@@ -48,6 +52,61 @@ function getAudioContext() {
     return audioCtx;
 }
 
+// Fetches an mp3 via standard fetch and decodes into an AudioBuffer in RAM
+async function loadAudioBuffer(key) {
+    if (audioBuffers.has(key)) return audioBuffers.get(key);
+    if (pendingLoads.has(key)) return pendingLoads.get(key);
+
+    const ctx = getAudioContext();
+    if (!ctx) return null;
+
+    const promise = (async () => {
+        try {
+            const url = SOUND_FILES[key];
+            if (!url) return null;
+            const res = await fetch(url);
+            if (!res.ok) return null;
+            const arrayBuffer = await res.arrayBuffer();
+            const decoded = await ctx.decodeAudioData(arrayBuffer);
+            audioBuffers.set(key, decoded);
+            return decoded;
+        } catch {
+            return null;
+        } finally {
+            pendingLoads.delete(key);
+        }
+    })();
+
+    pendingLoads.set(key, promise);
+    return promise;
+}
+
+// Unlock audio context and start fetching buffers on first user interaction
+function initAudioOnUserInteraction() {
+    const ctx = getAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+    }
+    // Preload all audio buffers in background via fetch (safe from IDM)
+    Object.keys(SOUND_FILES).forEach((key) => {
+        loadAudioBuffer(key).catch(() => {});
+    });
+}
+
+// Listen for first user click/touch/keypress to unlock audio and warm up memory buffers
+if (typeof window !== 'undefined') {
+    const interactionEvents = ['pointerdown', 'touchstart', 'keydown'];
+    const handleFirstInteraction = () => {
+        initAudioOnUserInteraction();
+        interactionEvents.forEach((evt) => {
+            window.removeEventListener(evt, handleFirstInteraction);
+        });
+    };
+    interactionEvents.forEach((evt) => {
+        window.addEventListener(evt, handleFirstInteraction, { passive: true, once: true });
+    });
+}
+
 // Plays a generated sound if the mp3 file fails or cannot be loaded
 function playFallback(fallbackFn) {
     if (isAudioMuted || typeof fallbackFn !== 'function') return;
@@ -60,35 +119,82 @@ function playFallback(fallbackFn) {
     }
 }
 
-// Plays an mp3 sound file, or uses the synthesizer fallback if playback fails
+// Plays a sound from the decoded RAM buffer
 function playSoundFile(key, fallbackFn) {
     if (isAudioMuted) return;
 
-    if (typeof window !== 'undefined' && window.Audio) {
+    const ctx = getAudioContext();
+    if (!ctx) {
+        playWithHtml5Audio(key, fallbackFn);
+        return;
+    }
+
+    // Fast-path: audio is already decoded in RAM buffer -> play with 0ms latency
+    const buffer = audioBuffers.get(key);
+    if (buffer) {
         try {
-            let audio = audioElements.get(key);
-            if (!audio) {
-                audio = new Audio(SOUND_FILES[key]);
-                audio.volume = 0.85;
-                audioElements.set(key, audio);
-            }
-            // Rewind to start in case the sound is already playing
-            audio.currentTime = 0;
-            const playPromise = audio.play();
-            if (playPromise !== undefined) {
-                playPromise.catch((err) => {
-                    // Ignore abort errors caused by rapid playback interruptions so fallback synthesizer does not double-play
-                    if (err && (err.name === 'AbortError' || err.code === 20)) return;
-                    playFallback(fallbackFn);
-                });
-            }
+            const source = ctx.createBufferSource();
+            const gainNode = ctx.createGain();
+            gainNode.gain.setValueAtTime(0.85, ctx.currentTime);
+            source.buffer = buffer;
+            source.connect(gainNode);
+            gainNode.connect(ctx.destination);
+            source.start(0);
             return;
         } catch {
             playFallback(fallbackFn);
             return;
         }
     }
-    playFallback(fallbackFn);
+
+    // Buffer not decoded yet: load asynchronously and play immediately upon decode
+    loadAudioBuffer(key)
+        .then((loadedBuffer) => {
+            if (!loadedBuffer || isAudioMuted) {
+                if (!loadedBuffer) playFallback(fallbackFn);
+                return;
+            }
+            try {
+                const source = ctx.createBufferSource();
+                const gainNode = ctx.createGain();
+                gainNode.gain.setValueAtTime(0.85, ctx.currentTime);
+                source.buffer = loadedBuffer;
+                source.connect(gainNode);
+                gainNode.connect(ctx.destination);
+                source.start(0);
+            } catch {
+                playFallback(fallbackFn);
+            }
+        })
+        .catch(() => {
+            playFallback(fallbackFn);
+        });
+}
+
+// HTML5 Audio fallback only if Web Audio API is completely unavailable
+function playWithHtml5Audio(key, fallbackFn) {
+    if (typeof window === 'undefined' || !window.Audio) {
+        playFallback(fallbackFn);
+        return;
+    }
+    try {
+        let audio = fallbackAudioElements.get(key);
+        if (!audio) {
+            audio = new Audio(SOUND_FILES[key]);
+            audio.volume = 0.85;
+            fallbackAudioElements.set(key, audio);
+        }
+        audio.currentTime = 0;
+        const p = audio.play();
+        if (p !== undefined) {
+            p.catch((err) => {
+                if (err && (err.name === 'AbortError' || err.code === 20)) return;
+                playFallback(fallbackFn);
+            });
+        }
+    } catch {
+        playFallback(fallbackFn);
+    }
 }
 
 // Check if sounds are currently muted

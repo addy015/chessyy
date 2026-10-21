@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
-import { Chess } from 'chess.js';
-import ChessBoard from '../board/ChessBoard';
-import { getRandomPuzzle } from '../../data/puzzlesData';
-import { fetchDynamicPuzzle } from '../../services/puzzleService';
-import { useSound } from '../../context/SoundContext';
-import SoundToggleButton from '../common/SoundToggleButton';
+import { useState, useRef, useEffect } from "react";
+import { Chess } from "chess.js";
+import ChessBoard from "../board/ChessBoard";
+import { getRandomPuzzle } from "../../data/puzzlesData";
+import { fetchDynamicPuzzle } from "../../services/puzzleService";
+import { useSound } from "../../context/SoundContext";
+import SoundToggleButton from "../common/SoundToggleButton";
 
 // Interactive chess puzzle widget for the homepage
 export default function PuzzleWidget() {
@@ -18,13 +18,17 @@ export default function PuzzleWidget() {
   } = useSound();
 
   const [currentPuzzle, setCurrentPuzzle] = useState(() => getRandomPuzzle());
-  const [chessGame, setChessGame] = useState(() => new Chess(currentPuzzle.fen));
+  const [chessGame, setChessGame] = useState(
+    () => new Chess(currentPuzzle.fen),
+  );
 
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [possibleMoves, setPossibleMoves] = useState([]);
-  const [lastMove, setLastMove] = useState(() => currentPuzzle?.lastMove || null);
+  const [lastMove, setLastMove] = useState(
+    () => currentPuzzle?.lastMove || null,
+  );
   const [stepIndex, setStepIndex] = useState(0); // Current move in the puzzle solution sequence
-  const [status, setStatus] = useState('idle'); // 'idle', 'wrong', or 'solved'
+  const [status, setStatus] = useState("idle"); // 'idle', 'wrong', or 'solved'
   const [isOpponentMoving, setIsOpponentMoving] = useState(false);
   const [streak, setStreak] = useState(0);
   const [showHint, setShowHint] = useState(false);
@@ -61,7 +65,11 @@ export default function PuzzleWidget() {
     fetchDynamicPuzzle()
       .then((dynamicPuzzle) => {
         // Only override if component is mounted and user hasn't already started solving initial puzzle
-        if (isMountedRef.current && dynamicPuzzle && !hasUserInteractedRef.current) {
+        if (
+          isMountedRef.current &&
+          dynamicPuzzle &&
+          !hasUserInteractedRef.current
+        ) {
           initPuzzle(dynamicPuzzle);
         }
       })
@@ -71,11 +79,17 @@ export default function PuzzleWidget() {
   // Helper to play exactly one appropriate sound effect based on move priority
   const playSfxForMove = (moveResult, chessInstance, isSelf = true) => {
     if (!moveResult) return;
-    const inCheck = typeof chessInstance.inCheck === 'function'
-      ? chessInstance.inCheck()
-      : (typeof chessInstance.in_check === 'function' ? chessInstance.in_check() : false);
+    const inCheck =
+      typeof chessInstance.inCheck === "function"
+        ? chessInstance.inCheck()
+        : typeof chessInstance.in_check === "function"
+          ? chessInstance.in_check()
+          : false;
     const isCapture = Boolean(moveResult.captured);
-    const isCastle = Boolean(moveResult.flags && (moveResult.flags.includes('k') || moveResult.flags.includes('q')));
+    const isCastle = Boolean(
+      moveResult.flags &&
+      (moveResult.flags.includes("k") || moveResult.flags.includes("q")),
+    );
     const isPromotion = Boolean(moveResult.promotion);
 
     if (inCheck) {
@@ -100,7 +114,7 @@ export default function PuzzleWidget() {
     setPossibleMoves([]);
     setLastMove(puzzle.lastMove || null);
     setStepIndex(0);
-    setStatus('idle');
+    setStatus("idle");
     setIsOpponentMoving(false);
     setShowHint(false);
   };
@@ -113,7 +127,7 @@ export default function PuzzleWidget() {
     setPossibleMoves([]);
     setLastMove(currentPuzzle.lastMove || null);
     setStepIndex(0);
-    setStatus('idle');
+    setStatus("idle");
     setIsOpponentMoving(false);
     setShowHint(false);
   };
@@ -142,7 +156,7 @@ export default function PuzzleWidget() {
 
   // Handle square clicks: select piece, calculate legal moves, and execute move
   const handleSquareClick = (rowIndex, colIndex, squareName, square) => {
-    if (status !== 'idle' || isOpponentMoving) return;
+    if (status !== "idle" || isOpponentMoving) return;
     hasUserInteractedRef.current = true;
 
     const playerColor = currentPuzzle.turn;
@@ -173,7 +187,7 @@ export default function PuzzleWidget() {
     }
 
     // 4. Validate if target square is in legal moves
-    const targetMove = possibleMoves.find(m => m.to === squareName);
+    const targetMove = possibleMoves.find((m) => m.to === squareName);
     if (!targetMove) {
       setSelectedSquare(null);
       setPossibleMoves([]);
@@ -181,8 +195,8 @@ export default function PuzzleWidget() {
     }
 
     // Resolve expected move and dynamically extract promotion piece (e.g. underpromotion =N, =R, =B)
-    const expectedMove = currentPuzzle.solution[stepIndex] || '';
-    let promoPiece = 'q';
+    const expectedMove = currentPuzzle.solution[stepIndex] || "";
+    let promoPiece = "q";
     const promoMatch = expectedMove.match(/=([qrbn])/i);
     if (promoMatch) {
       promoPiece = promoMatch[1].toLowerCase();
@@ -195,7 +209,7 @@ export default function PuzzleWidget() {
       executedMove = nextGame.move({
         from: selectedSquare.squareName,
         to: squareName,
-        promotion: promoPiece
+        promotion: promoPiece,
       });
     } catch {
       executedMove = null;
@@ -218,17 +232,18 @@ export default function PuzzleWidget() {
     // Check if move matches the puzzle's expected solution
     const isCorrect =
       executedMove.san === expectedMove ||
-      executedMove.san.replace(/[+#]/g, '') === expectedMove.replace(/[+#]/g, '') ||
-      (executedMove.from + executedMove.to === expectedMove) ||
-      (executedMove.lan === expectedMove);
+      executedMove.san.replace(/[+#]/g, "") ===
+        expectedMove.replace(/[+#]/g, "") ||
+      executedMove.from + executedMove.to === expectedMove ||
+      executedMove.lan === expectedMove;
 
     if (isCorrect) {
       const nextStep = stepIndex + 1;
 
       if (nextStep >= currentPuzzle.solution.length) {
         // Complete puzzle solved
-        setStatus('solved');
-        setStreak(s => s + 1);
+        setStatus("solved");
+        setStreak((s) => s + 1);
         victoryTimerRef.current = setTimeout(() => {
           if (isMountedRef.current) {
             playGameOverSound();
@@ -249,12 +264,15 @@ export default function PuzzleWidget() {
           try {
             oppExecuted = oppGame.move(opponentMoveSan, { sloppy: true });
           } catch {
-            if (typeof opponentMoveSan === 'string' && opponentMoveSan.length >= 4) {
+            if (
+              typeof opponentMoveSan === "string" &&
+              opponentMoveSan.length >= 4
+            ) {
               try {
                 oppExecuted = oppGame.move({
                   from: opponentMoveSan.slice(0, 2),
                   to: opponentMoveSan.slice(2, 4),
-                  promotion: opponentMoveSan.slice(4) || 'q',
+                  promotion: opponentMoveSan.slice(4) || "q",
                 });
               } catch {}
             }
@@ -271,8 +289,8 @@ export default function PuzzleWidget() {
           setIsOpponentMoving(false);
 
           if (subsequentStep >= currentPuzzle.solution.length) {
-            setStatus('solved');
-            setStreak(s => s + 1);
+            setStatus("solved");
+            setStreak((s) => s + 1);
             victoryTimerRef.current = setTimeout(() => {
               if (isMountedRef.current) {
                 playGameOverSound();
@@ -283,20 +301,18 @@ export default function PuzzleWidget() {
       }
     } else {
       // Wrong move played
-      setStatus('wrong');
+      setStatus("wrong");
     }
   };
 
-  const isWhiteTurn = currentPuzzle.turn === 'w';
+  const isWhiteTurn = currentPuzzle.turn === "w";
 
   return (
     <div className="puzzle-widget-card" id="home-puzzle-card">
       {/* Widget Header Banner */}
       <div className="puzzle-widget-header">
         <div className="puzzle-header-meta">
-          <span className="puzzle-pill-tag">
-            PUZZLE BOARD
-          </span>
+          <span className="puzzle-pill-tag">PUZZLE BOARD</span>
           {currentPuzzle.rating && (
             <span className="puzzle-rating-badge" title="Tactical Rating">
               ★ {currentPuzzle.rating}
@@ -305,9 +321,13 @@ export default function PuzzleWidget() {
         </div>
 
         <div className="puzzle-header-controls">
-          <div className={`puzzle-turn-badge ${isWhiteTurn ? 'white-turn' : 'black-turn'}`}>
+          <div
+            className={`puzzle-turn-badge ${isWhiteTurn ? "white-turn" : "black-turn"}`}
+          >
             <span className="turn-dot" />
-            <span className="turn-label">{isWhiteTurn ? 'WHITE TO MOVE' : 'BLACK TO MOVE'}</span>
+            <span className="turn-label">
+              {isWhiteTurn ? "WHITE TO MOVE" : "BLACK TO MOVE"}
+            </span>
           </div>
 
           <button
@@ -318,13 +338,15 @@ export default function PuzzleWidget() {
             disabled={isLoadingNew}
             aria-label="Skip to new puzzle"
           >
-            {isLoadingNew ? 'LOADING...' : 'NEW ↻'}
+            {isLoadingNew ? "LOADING..." : "NEW ↻"}
           </button>
         </div>
       </div>
 
       {/* Interactive Board Viewport */}
-      <div className={`puzzle-board-container ${status === 'wrong' ? 'shake-board' : ''}`}>
+      <div
+        className={`puzzle-board-container ${status === "wrong" ? "shake-board" : ""}`}
+      >
         <ChessBoard
           chess={chessGame}
           playerRole={currentPuzzle.turn}
@@ -336,8 +358,11 @@ export default function PuzzleWidget() {
         />
 
         {/* Floating overlays for solved / wrong status */}
-        {status === 'solved' && (
-          <div className="puzzle-overlay solved-overlay" id="puzzle-solved-banner">
+        {status === "solved" && (
+          <div
+            className="puzzle-overlay solved-overlay"
+            id="puzzle-solved-banner"
+          >
             <div className="puzzle-overlay-content">
               <div className="overlay-badge">CONGRATS, PUZZLE SOLVED!</div>
               <button
@@ -355,13 +380,15 @@ export default function PuzzleWidget() {
 
       {/* Widget Bottom Status Bar */}
       <div className="puzzle-widget-footer">
-        {status === 'idle' && (
+        {status === "idle" && (
           <>
             <div className="puzzle-footer-status">
               <div className="puzzle-status-left">
                 <span className="status-indicator-dot pulsing" />
                 <span className="puzzle-prompt-text">
-                  {isOpponentMoving ? 'Opponent responding...' : 'Find the best move'}
+                  {isOpponentMoving
+                    ? "Opponent responding..."
+                    : "Find the best move"}
                 </span>
               </div>
 
@@ -394,7 +421,7 @@ export default function PuzzleWidget() {
           </>
         )}
 
-        {status === 'wrong' && (
+        {status === "wrong" && (
           <div className="puzzle-footer-status status-error">
             <span className="error-text">INCORRECT MOVE - TRY AGAIN</span>
             <button
@@ -408,7 +435,7 @@ export default function PuzzleWidget() {
           </div>
         )}
 
-        {status === 'solved' && (
+        {status === "solved" && (
           <div className="puzzle-footer-status status-success">
             <span className="success-text">PUZZLE SOLVED</span>
             <button
@@ -420,15 +447,18 @@ export default function PuzzleWidget() {
             </button>
           </div>
         )}
-        
+
         <div className="puzzle-footer-meta">
           <span className="puzzle-source-stamp">
-            {currentPuzzle.theme ? `${currentPuzzle.theme} / ` : ''}{currentPuzzle.source}
+            {/* {currentPuzzle.theme ? `${currentPuzzle.theme} / ` : ""} */}
+            {currentPuzzle.source}
           </span>
-          <SoundToggleButton id="puzzle-sound-toggle-btn" className="puzzle-sound-toggle-btn" />
+          <SoundToggleButton
+            id="puzzle-sound-toggle-btn"
+            className="puzzle-sound-toggle-btn"
+          />
         </div>
       </div>
     </div>
   );
 }
-
